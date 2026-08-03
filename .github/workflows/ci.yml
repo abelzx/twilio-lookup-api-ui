@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 24 is the deployed Functions runtime (see .twilioserverlessrc);
+        # 22 is what most contributors will have locally.
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax-check Functions and frontend
+        run: |
+          for f in functions/*.js assets/app.js; do
+            node --check "$f" && echo "ok  $f"
+          done
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  guardrails:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail if credentials or deploy cache were committed
+        run: |
+          fail=0
+          for f in .env .twiliodeployinfo; do
+            if git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+              echo "::error file=$f::$f must never be committed - it is git-ignored for a reason"
+              fail=1
+            fi
+          done
+          if git ls-files | grep -qE '^\.env\.'; then
+            echo "::error::an .env.* file is tracked"
+            fail=1
+          fi
+          # Account SIDs and API Key SIDs are 'AC'/'SK' + 32 hex chars.
+          if git grep -nIE '(AC|SK)[0-9a-f]{32}' -- . ':!*.md' ':!package-lock.json' | grep -vE 'x{8}'; then
+            echo "::error::a real-looking Account SID or API Key SID is present in tracked files"
+            fail=1
+          fi
+          if [ "$fail" -eq 0 ]; then echo "No credential material in tracked files."; fi
+          exit $fail
+
+      - name: Confirm the Functions runtime is pinned
+        run: |
+          # .twilioserverlessrc has no .json extension, so require() would parse it as JS.
+          runtime=$(node -p "JSON.parse(require('fs').readFileSync('.twilioserverlessrc','utf8')).runtime || ''")
+          if [ -z "$runtime" ]; then
+            echo "::error::.twilioserverlessrc has no 'runtime' key - deploys would inherit the last build's runtime"
+            exit 1
+          fi
+          echo "Functions runtime pinned to: $runtime"

@@ -1,0 +1,9 @@
+{
+  "runtime": "node24",
+  "commands": {
+    "deploy": {
+      "functionsFolder": "functions",
+      "assetsFolder": "assets"
+    }
+  }
+}

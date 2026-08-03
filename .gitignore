@@ -1,0 +1,18 @@
+node_modules/
+
+# Credentials — never commit any .env variant. `twilio serverless:deploy` also
+# uploads .env into the deployed service environment, so keep it local-only.
+.env
+.env.*
+
+# Twilio CLI deploy cache: contains your Account SID and the deployed service SID.
+.twiliodeployinfo
+
+# Local-only editor/tooling state
+.claude/settings.local.json
+
+# Input/output data — CSVs here hold real phone numbers
+*.csv
+
+.DS_Store
+*.log

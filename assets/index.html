@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Twilio Lookup v2 — Bulk</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+
+    <!-- Login screen — OAuth app credentials are verified by /verify, then kept in sessionStorage -->
+    <div id="loginView" class="login-view" hidden>
+      <div class="login-card">
+        <div class="login-card__logo">
+          <img src="/twilio_logo.png" alt="Twilio" width="36" height="36" />
+          <span>Twilio</span>
+        </div>
+        <h1 class="login-card__title">Lookup v2 — Bulk Tool</h1>
+        <p class="login-card__subtitle">Sign in with a Twilio OAuth app. Your credentials are stored only in this browser.</p>
+
+        <div class="form-grid">
+          <label class="field" style="grid-column: 1 / -1">
+            <span>Client ID</span>
+            <input type="text" id="loginClientId" placeholder="Your OAuth app's Client ID" spellcheck="false" autocomplete="username" />
+          </label>
+
+          <label class="field" style="grid-column: 1 / -1">
+            <span>Client Secret</span>
+            <input type="password" id="loginClientSecret" placeholder="••••••••••••••••••••••••••••••••" spellcheck="false" autocomplete="current-password" />
+          </label>
+        </div>
+
+        <button type="button" class="btn btn--primary login-card__submit" id="loginBtn">Sign in</button>
+        <p class="login-card__error" id="loginError" aria-live="polite" hidden></p>
+        <p class="login-card__hint">
+          Create an OAuth app in the Twilio Console under <strong>Settings &rsaquo; Account settings &rsaquo; OAuth applications</strong>, granting the <strong>Lookup</strong> scopes.
+        </p>
+      </div>
+    </div>
+
+    <!-- Main app -->
+    <div id="appView" hidden>
+      <nav class="topbar">
+        <div class="topbar__logo">
+          <img src="/twilio_logo.png" alt="Twilio" width="30" height="30" />
+          <span>Twilio</span>
+        </div>
+        <div class="topbar__sep"></div>
+        <span class="topbar__title">Lookup v2 — Bulk Tool</span>
+        <div class="topbar__spacer"></div>
+        <span class="topbar__account" id="topbarAccount"></span>
+        <button type="button" class="topbar__signout" id="signOutBtn" hidden>Sign out</button>
+      </nav>
+
+      <div class="app">
+        <header class="header">
+          <div class="header__title">
+            <h1>Lookup v2</h1>
+            <p class="header__subtitle">
+              Bulk phone validation and optional data packages. Charges apply when
+              paid fields are requested — see
+              <a
+                href="https://www.twilio.com/docs/lookup/v2-api"
+                target="_blank"
+                rel="noreferrer"
+                >Lookup v2 API docs</a
+              >.
+            </p>
+          </div>
+        </header>
+
+        <main class="layout">
+          <section class="panel panel--input">
+            <h2>Phone numbers</h2>
+            <p class="hint">One number per line, or comma-separated. Duplicates are removed.</p>
+            <textarea
+              id="numbers"
+              rows="12"
+              placeholder="+14155552671&#10;+447700900123&#10;…"
+              spellcheck="false"
+            ></textarea>
+
+            <div class="csv-block">
+              <h2 class="csv-block__title">CSV upload (large batches)</h2>
+              <p class="hint">
+                Upload a CSV; phones are read from the column you choose (quoted fields supported).
+                Tune <strong>parallel batches</strong> and <strong>concurrent lookups</strong> for speed (watch Twilio rate limits / 429s).
+              </p>
+              <div class="row row--gap csv-row">
+                <label class="field-inline field-inline--grow">
+                  <span>CSV file</span>
+                  <input type="file" id="csvFile" accept=".csv,text/csv,text/plain" />
+                </label>
+                <label class="field-inline">
+                  <span>Phone column (1 = first)</span>
+                  <input type="number" id="csvPhoneColumn" min="1" value="1" />
+                </label>
+                <label class="field-inline">
+                  <span>Numbers per API batch</span>
+                  <input type="number" id="batchSize" min="25" max="2000" value="30" />
+                </label>
+                <label class="field-inline">
+                  <span>Parallel batches</span>
+                  <input type="number" id="parallelBatches" min="1" max="12" value="2" title="How many /lookup requests run at once" />
+                </label>
+                <label class="field-inline">
+                  <span>Skip first N records</span>
+                  <input
+                    type="number"
+                    id="skipRecords"
+                    min="0"
+                    value="0"
+                    title="After dedupe, in list order — resume a job by skipping rows you already processed"
+                  />
+                </label>
+              </div>
+              <p class="csv-meta" id="csvMeta" aria-live="polite"></p>
+            </div>
+
+            <div class="row row--gap">
+              <label class="field-inline">
+                <span>Default country (national numbers)</span>
+                <input type="text" id="countryCode" placeholder="US" maxlength="2" />
+              </label>
+              <label class="field-inline">
+                <span>Concurrent Twilio lookups (per batch)</span>
+                <input type="number" id="concurrency" min="1" max="7" value="5" title="Parallel Lookup API calls inside each batch (capped at 7 by /lookup to stay under the 10s Function timeout)" />
+              </label>
+            </div>
+
+            <h2>Data packages</h2>
+            <p class="hint">
+              Select add-on fields. Basic validation and formatting are included with every request.
+            </p>
+            <div class="checkbox-grid" id="fieldOptions"></div>
+
+            <details class="details">
+              <summary>Identity Match parameters</summary>
+              <p class="hint small">
+                Used when <code>identity_match</code> is selected. All optional.
+              </p>
+              <div class="form-grid" id="identityMatchFields"></div>
+            </details>
+
+            <details class="details">
+              <summary>Reassigned number &amp; other options</summary>
+              <div class="form-grid">
+                <label class="field">
+                  <span><code>last_verified_date</code> (reassigned_number)</span>
+                  <input type="text" id="lastVerifiedDate" placeholder="YYYY-MM-DD" />
+                </label>
+                <label class="field">
+                  <span><code>partner_sub_id</code> (SMS pumping risk context)</span>
+                  <input type="text" id="partnerSubId" />
+                </label>
+              </div>
+            </details>
+
+            <div class="actions">
+              <button type="button" class="btn btn--primary" id="runLookup">
+                Run lookup
+              </button>
+              <button type="button" class="btn" id="cancelLookup" disabled hidden>
+                Cancel
+              </button>
+              <button type="button" class="btn" id="exportCsv" disabled>
+                Export CSV
+              </button>
+            </div>
+            <div class="progress-wrap" id="progressWrap" hidden>
+              <progress id="batchProgress" max="100" value="0"></progress>
+              <span class="progress-label" id="progressLabel">0 / 0</span>
+            </div>
+            <p class="throughput" id="throughputLabel" aria-live="polite" hidden>—</p>
+            <p class="status" id="status" aria-live="polite"></p>
+          </section>
+
+          <section class="panel panel--results">
+            <div class="results-header">
+              <h2>Results</h2>
+              <span class="badge" id="resultCount">0 rows</span>
+            </div>
+            <div class="table-wrap">
+              <table class="results-table" id="resultsTable">
+                <thead>
+                  <tr>
+                    <th>Input</th>
+                    <th>Status</th>
+                    <th>Summary</th>
+                  </tr>
+                </thead>
+                <tbody id="resultsBody"></tbody>
+              </table>
+            </div>
+            <p class="preview-note" id="previewNote" hidden></p>
+            <details class="details raw-details">
+              <summary>Raw JSON</summary>
+              <pre id="rawJson" class="raw-json"></pre>
+            </details>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

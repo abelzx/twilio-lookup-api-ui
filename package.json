@@ -1,0 +1,31 @@
+{
+  "name": "twilio-lookup-serverless",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Bulk Twilio Lookup v2 UI with browser-based login, deployed on Twilio Serverless",
+  "license": "MIT",
+  "author": "Abel Ng",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/abelzx/twilio-lookup-api-ui.git"
+  },
+  "keywords": [
+    "twilio",
+    "lookup",
+    "phone-number-intelligence",
+    "twilio-serverless",
+    "bulk-lookup"
+  ],
+  "scripts": {
+    "dev": "twilio serverless:start",
+    "deploy": "twilio serverless:deploy",
+    "deploy:verify-24": "twilio serverless:deploy --runtime node24 --environment verify-24",
+    "remove": "twilio api:serverless:v1:services:remove"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "twilio": "^5.13.1"
+  }
+}
