@@ -11,6 +11,9 @@ node_modules/
 # Local-only editor/tooling state
 .claude/settings.local.json
 
+# Brainstorming companion output (mockup HTML, server state)
+.superpowers/
+
 # Input/output data — CSVs here hold real phone numbers
 *.csv
 
