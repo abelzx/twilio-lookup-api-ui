@@ -200,22 +200,34 @@ separately: `#2a78d6`↔`#008300` ΔE 26.5 — **PASS**.
 **Neutral** `#8891AA` (the app's `--text-muted`) for `Unknown` and `Other`. These
 are "no position on the scale", not series, so the chroma floor doesn't apply.
 
-**Colour follows the entity, not the rank.** Slices are *ordered* by count, but
-hues are *not* assigned by count. Each dimension has a stable key order — a
-canonical list for line type (`mobile`, `landline`, `fixedVoip`, `nonFixedVoip`,
-`tollFree`, `premium`, `sharedCost`, `uan`, `voicemail`, `pager`, `unknown`),
-alphabetical for country — and slots go to the visible categories in that order.
+**Colour follows the entity, not the rank — where the entity order means
+something.** Slices are always *ordered* by count. Hue assignment depends on
+whether the dimension has a canonical order:
 
-Precisely: take the categories that survive folding, sort them by stable key
-order, and assign slots 1..n in that sequence. So a category's hue never changes
-because its count moved, and `mobile` takes slot 1 whenever it is present (it is
-first in the canonical list).
+- **`lineType` has one** (`mobile`, `landline`, `fixedVoip`, `nonFixedVoip`,
+  `tollFree`, `premium`, `sharedCost`, `uan`, `voicemail`, `pager`, `unknown`).
+  Take the categories that survive folding, sort by that order, assign slots
+  1..n. A category's hue never changes because its count moved, and `mobile`
+  takes slot 1 whenever present. A reader can learn "mobile is blue".
+- **`country` has none** (`keyOrder: null`), so hues follow **count rank**
+  instead: the largest slice takes slot 1.
 
-The limit, stated because it is real: there are 6 slots and up to 11 line types,
-so the mapping is stable *for a given set of visible categories*. Two runs whose
-visible sets differ can assign the same category to different slots. Full
-cross-run hue stability would need a fixed hue per known category, which would
-force two line types to share a hue — a worse trade than this one.
+Why the split, since it looks like an inconsistency: entity-stable hues only pay
+for themselves when the order carries meaning a reader can internalise. Alphabetical
+country order carries none — nobody holds a mental model of "US is magenta" — and
+sorting by it handed the dominant slice whatever hue its initial letter dictated.
+Rendering the real thing made this concrete: in a run that was 72.8% US, the
+largest slice came out pale magenta (slot 5, since US sorts last among
+AU/GB/IN/SG/US), which reads as arbitrary. Count rank at least reads
+intentionally. The cost, accepted: the same country can change colour between
+runs whose visible sets differ.
+
+The limit on the canonical-order path, stated because it is real: there are 6
+slots and up to 11 line types, so the mapping is stable *for a given set of
+visible categories*. Two runs whose visible sets differ can assign the same line
+type to different slots. Full cross-run stability would need a fixed hue per
+known category, which would force two line types to share a hue — a worse trade
+than this one.
 
 **Status colours are not used as a scheme.** A five-way good/warning/critical
 palette fails colourblind separation outright: `#d03b3b`↔`#0ca30c` measures
