@@ -324,7 +324,17 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 /** Gap between segments, in percent-of-circumference units (~2px at 96px). */
 const SEGMENT_GAP = 0.9;
-/** Floor so a tiny slice still paints something rather than vanishing. */
+/**
+ * Floor on the visible dash, which keeps `pct - SEGMENT_GAP` from going negative
+ * and producing an invalid dasharray for any segment under 0.9%.
+ *
+ * It does NOT make a tiny slice reliably wider: `cumulative` advances by the
+ * segment's true pct, so the next segment starts before a floored segment's arc
+ * ends and — being appended later — paints over the overflow. Measured, a 0.2%
+ * segment renders 0.21% of the ring, not 0.5%. Only the last segment drawn keeps
+ * its floor. That is accepted: sub-1% slices are invisible either way, and the
+ * legend carries every value in text, which is the real mitigation.
+ */
 const MIN_SEGMENT = 0.5;
 
 function fmtCount(n) {
