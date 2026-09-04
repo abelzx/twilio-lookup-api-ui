@@ -814,10 +814,27 @@ function makeCategory(dim, label, count, color) {
 }
 ```
 
+- [ ] **Step 3b: Break the stub's delegation**
+
+Task 4's `nominalCategories` stub delegates to `ordinalCategories`. That was fine
+while `ordinalCategories` was itself a stub, but it now reads `dim.order` — and
+nominal dimensions have `keyOrder`, not `order`, so `country` and `lineType`
+would throw `Cannot read properties of undefined (reading 'filter')`. Give the
+stub its own inert body (Task 6 replaces it wholesale):
+
+```js
+function nominalCategories(dim, counts) {
+  return [...counts.entries()].map(([label, count]) =>
+    makeCategory(dim, label, count, NEUTRAL)
+  );
+}
+```
+
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npm test`
-Expected: PASS — 24 tests, 0 failures
+Expected: PASS — 24 tests, 0 failures. If you see 5 failures in the Task 4
+`computeBreakdown` tests with `reading 'filter'`, Step 3b was skipped.
 
 - [ ] **Step 5: Commit**
 
