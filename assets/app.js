@@ -775,6 +775,7 @@ async function runLookup() {
     }
     lastResponse = results;
     renderTable(results);
+    renderBreakdown(results, el("breakdownBlock"));
     el("exportCsv").disabled = !results.length;
     const skipNote =
       skip > 0 ? `Skipped first ${skip.toLocaleString()} (not in this export). ` : "";
@@ -800,6 +801,7 @@ async function runLookup() {
       el("rawJson").textContent = "";
       el("resultCount").textContent = "0 rows";
       el("previewNote").hidden = true;
+      clearBreakdown(el("breakdownBlock"));
     }
   } finally {
     el("runLookup").disabled = false;
