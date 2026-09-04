@@ -1,7 +1,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { pick, riskBand, DIMENSIONS } = require("../assets/breakdown.js");
+const {
+  pick,
+  riskBand,
+  DIMENSIONS,
+  computeBreakdown,
+} = require("../assets/breakdown.js");
 
 test("pick returns the first present key", () => {
   assert.equal(pick({ a: 1, b: 2 }, "a", "b"), 1);
@@ -109,4 +114,70 @@ test("country extractor upper-cases and reads both spellings", () => {
   assert.equal(d.extract({ country_code: "gb" }), "GB");
   assert.equal(d.extract({ countryCode: "US" }), "US");
   assert.equal(d.extract({}), null);
+});
+
+test("computeBreakdown counts run-level successes and errors", () => {
+  const out = computeBreakdown([
+    { input: "+1", ok: true, data: { countryCode: "US" } },
+    { input: "+2", ok: true, data: { countryCode: "US" } },
+    { input: "bad", ok: false, error: "invalid", code: 60200 },
+  ]);
+  assert.equal(out.total, 3);
+  assert.equal(out.okCount, 2);
+  assert.equal(out.errorCount, 1);
+});
+
+test("computeBreakdown uses a per-dimension denominator, not the run total", () => {
+  // 4 numbers: all have a country, only 2 have a line status.
+  const out = computeBreakdown([
+    { ok: true, data: { countryCode: "US", lineStatus: { status: "reachable" } } },
+    { ok: true, data: { countryCode: "US", lineStatus: { status: "inactive" } } },
+    { ok: true, data: { countryCode: "GB", lineStatus: null } },
+    { ok: true, data: { countryCode: "GB", lineStatus: { error_code: 60600 } } },
+  ]);
+
+  const status = out.dimensions.find((d) => d.id === "lineStatus");
+  assert.equal(status.withData, 2);
+  assert.equal(status.noData, 2);
+  // 1 of 2 assessed numbers is Inactive -> 50%, NOT 25% of the run
+  const inactive = status.categories.find((c) => c.label === "Inactive");
+  assert.equal(inactive.count, 1);
+  assert.equal(inactive.pct, 50);
+
+  const country = out.dimensions.find((d) => d.id === "country");
+  assert.equal(country.withData, 4);
+  assert.equal(country.noData, 0);
+});
+
+test("computeBreakdown omits dimensions with no data at all", () => {
+  const out = computeBreakdown([{ ok: true, data: { countryCode: "US" } }]);
+  assert.deepEqual(out.dimensions.map((d) => d.id), ["country"]);
+});
+
+test("computeBreakdown excludes failed rows from every denominator", () => {
+  const out = computeBreakdown([
+    { ok: true, data: { countryCode: "US" } },
+    { ok: false, error: "boom" },
+  ]);
+  const country = out.dimensions.find((d) => d.id === "country");
+  assert.equal(country.withData, 1);
+  assert.equal(country.noData, 1);
+  assert.equal(country.categories[0].pct, 100);
+});
+
+test("computeBreakdown handles empty and non-array input", () => {
+  for (const input of [[], null, undefined, "nope"]) {
+    const out = computeBreakdown(input);
+    assert.equal(out.total, 0);
+    assert.deepEqual(out.dimensions, []);
+  }
+});
+
+test("computeBreakdown survives a row whose extractor throws", () => {
+  const out = computeBreakdown([
+    { ok: true, data: { get countryCode() { throw new Error("boom"); } } },
+    { ok: true, data: { countryCode: "US" } },
+  ]);
+  const country = out.dimensions.find((d) => d.id === "country");
+  assert.equal(country.withData, 1);
 });
