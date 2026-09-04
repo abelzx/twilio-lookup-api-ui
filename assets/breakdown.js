@@ -434,12 +434,12 @@ function renderLegend(dimension) {
 
     const name = document.createElement("span");
     name.className = "bd-legend__name";
-    if (cat.statusRole) {
-      const dot = document.createElement("span");
-      dot.className = "bd-legend__status";
-      dot.style.background = STATUS_COLORS[cat.statusRole];
-      name.appendChild(dot);
-    }
+    // The dot is always present so its box is reserved and label text lines up
+    // down the column; only rows with a real status get it painted.
+    const dot = document.createElement("span");
+    dot.className = "bd-legend__status";
+    if (cat.statusRole) dot.style.background = STATUS_COLORS[cat.statusRole];
+    name.appendChild(dot);
     // textContent, not innerHTML — these labels come from API data.
     name.appendChild(document.createTextNode(cat.label));
     name.title = cat.label;
@@ -531,12 +531,25 @@ function renderBreakdown(results, container) {
     parts.push(`${fmtCount(summary.errorCount)} lookup ${plural}`);
   }
   // Cards can legitimately disagree on their totals, because each percentage is
-  // over the numbers that returned that field. Say so once here rather than
-  // caveating every card — and note "no data" absorbs the failed lookups above,
-  // so the two figures aren't additive.
-  coverage.textContent =
-    `${parts.join(" · ")}. Percentages are of the numbers that returned each ` +
-    `field, so totals differ per card; "no data" includes lookups that failed.`;
+  // over the numbers that returned that field — worth saying once here rather
+  // than caveating every card. But only say it when it is actually true of this
+  // run: an explanation for a discrepancy that isn't on screen just sends the
+  // reader looking for one.
+  const notes = [];
+  if (summary.dimensions.some((d) => d.noData > 0)) {
+    notes.push(
+      summary.dimensions.length > 1
+        ? "Percentages are of the numbers that returned each field, so totals differ per card"
+        : "Percentages are of the numbers that returned this field"
+    );
+    if (summary.errorCount > 0) {
+      // "no data" absorbs the failures counted above, so the two aren't additive.
+      notes.push('"no data" includes lookups that failed');
+    }
+  }
+  coverage.textContent = notes.length
+    ? `${parts.join(" · ")}. ${notes.join("; ")}.`
+    : parts.join(" · ");
 
   for (const dimension of summary.dimensions) {
     grid.appendChild(renderCard(dimension));
@@ -555,8 +568,95 @@ function clearBreakdown(container) {
   container.hidden = true;
 }
 
-/* Replaced in Task 10 with the real hover/focus wiring. */
-function attachInteractions() {}
+function ensureTooltip(grid) {
+  const host = grid.closest(".breakdown") || grid.parentElement;
+  let tip = host.querySelector(".bd-tooltip");
+  if (!tip) {
+    tip = document.createElement("div");
+    tip.className = "bd-tooltip";
+    tip.hidden = true;
+    host.appendChild(tip);
+  }
+  return tip;
+}
+
+function fillTooltip(tip, cat) {
+  tip.textContent = "";
+  const head = document.createElement("div");
+  head.textContent = `${cat.label} — ${fmtPct(cat.pct)} (${fmtCount(cat.count)})`;
+  tip.appendChild(head);
+
+  // "Other" would otherwise hide what it folded.
+  if (Array.isArray(cat.folded) && cat.folded.length > 0) {
+    const list = document.createElement("ul");
+    list.className = "bd-tooltip__folded";
+    for (const f of cat.folded) {
+      const item = document.createElement("li");
+      item.textContent = `${f.label} · ${fmtCount(f.count)}`;
+      list.appendChild(item);
+    }
+    tip.appendChild(list);
+  }
+}
+
+function positionTooltip(tip, grid, target) {
+  const host = grid.closest(".breakdown") || grid.parentElement;
+  const hostBox = host.getBoundingClientRect();
+  const box = target.getBoundingClientRect();
+  const left = box.left - hostBox.left + box.width / 2;
+  const top = box.top - hostBox.top;
+  tip.style.left = `${Math.max(4, Math.min(left, hostBox.width - 4))}px`;
+  tip.style.top = `${Math.max(4, top)}px`;
+  tip.style.transform = "translate(-50%, calc(-100% - 6px))";
+}
+
+/**
+ * Hover or focus a segment or a legend row and both highlight together.
+ * Keyboard focus shows exactly what hover shows; the tooltip only ever
+ * repeats values the legend already prints, so nothing is gated behind it.
+ */
+function attachInteractions(grid, dimensions) {
+  const tip = ensureTooltip(grid);
+  const cards = [...grid.querySelectorAll(".bd-card")];
+
+  cards.forEach((card, cardIndex) => {
+    const dimension = dimensions[cardIndex];
+    if (!dimension) return;
+
+    const show = (index, target) => {
+      const cat = dimension.categories[index];
+      if (!cat) return;
+      card.classList.add("bd-card--focus");
+      card.querySelectorAll(".bd-donut__seg").forEach((seg) => {
+        seg.classList.toggle("bd-donut__seg--on", seg.dataset.index === String(index));
+      });
+      fillTooltip(tip, cat);
+      tip.hidden = false;
+      positionTooltip(tip, grid, target);
+    };
+
+    const hide = () => {
+      card.classList.remove("bd-card--focus");
+      card.querySelectorAll(".bd-donut__seg--on").forEach((seg) => {
+        seg.classList.remove("bd-donut__seg--on");
+      });
+      tip.hidden = true;
+    };
+
+    const targets = [
+      ...card.querySelectorAll("circle[data-index]"),
+      ...card.querySelectorAll(".bd-legend__row"),
+    ];
+    for (const target of targets) {
+      const index = Number(target.dataset.index);
+      target.addEventListener("mouseenter", () => show(index, target));
+      target.addEventListener("focus", () => show(index, target));
+      target.addEventListener("mouseleave", hide);
+      target.addEventListener("blur", hide);
+    }
+    card.addEventListener("mouseleave", hide);
+  });
+}
 
 /* Requireable from node:test while staying a plain browser script. */
 if (typeof module !== "undefined" && module.exports) {
