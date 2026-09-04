@@ -478,11 +478,12 @@ async function runLookupSingle(numbers, signal) {
   return json.results || [];
 }
 
-const DEFAULT_CHECKED_FIELDS = [
-  "line_type_intelligence",
-  "line_status",
-  "sms_pumping_risk",
-];
+/**
+ * sms_pumping_risk is deliberately off by default: Twilio's own bands put almost
+ * all real traffic in "Low" (0-60), so it bills per lookup while telling you
+ * little. Tick it explicitly when you want it.
+ */
+const DEFAULT_CHECKED_FIELDS = ["line_type_intelligence", "line_status"];
 
 function initFieldCheckboxes() {
   const container = el("fieldOptions");
