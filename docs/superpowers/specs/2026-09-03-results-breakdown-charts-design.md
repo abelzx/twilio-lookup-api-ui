@@ -277,8 +277,12 @@ Aggregation is a pure function of `results`. `breakdown.js` does not read
 - in the `catch` block that clears `resultsBody` / `rawJson` / `resultCount` /
   `previewNote` (`app.js:799`)
 
-Cost: one O(n) pass over an array already in memory. A 50,000-row run aggregates
-in a single traversal; no chunking needed.
+Cost: one O(n) pass **per dimension** over an array already in memory, plus one
+for the run-level counts — five traversals as implemented, not one. At 50,000
+rows that is ~250k simple iterations, low single-digit milliseconds, and it runs
+once at end-of-run rather than per frame. Interleaving four independent maps and
+four try/catch scopes into a single loop would trade real clarity for a win that
+is imperceptible at this scale, so the per-dimension loop stands.
 
 Unknown or unexpected values become their own category rather than throwing, so a
 new Twilio enum value appears as itself instead of breaking the panel.
