@@ -407,6 +407,147 @@ function renderDonut(dimension) {
   return svg;
 }
 
+function renderLegend(dimension) {
+  const list = document.createElement("ul");
+  list.className = "bd-legend";
+
+  dimension.categories.forEach((cat, i) => {
+    const row = document.createElement("li");
+    row.className = "bd-legend__row";
+    row.tabIndex = 0;
+    row.dataset.index = String(i);
+
+    const swatch = document.createElement("span");
+    swatch.className = "bd-legend__swatch";
+    swatch.style.background = cat.color;
+    row.appendChild(swatch);
+
+    const name = document.createElement("span");
+    name.className = "bd-legend__name";
+    if (cat.statusRole) {
+      const dot = document.createElement("span");
+      dot.className = "bd-legend__status";
+      dot.style.background = STATUS_COLORS[cat.statusRole];
+      name.appendChild(dot);
+    }
+    // textContent, not innerHTML — these labels come from API data.
+    name.appendChild(document.createTextNode(cat.label));
+    name.title = cat.label;
+    row.appendChild(name);
+
+    const value = document.createElement("span");
+    value.className = "bd-legend__value";
+    value.textContent = fmtPct(cat.pct);
+    const count = document.createElement("i");
+    count.className = "bd-legend__count";
+    count.textContent = fmtCount(cat.count);
+    value.appendChild(count);
+    row.appendChild(value);
+
+    list.appendChild(row);
+  });
+
+  return list;
+}
+
+/** One category means the number IS the chart — a ring would say nothing. */
+function renderTile(dimension) {
+  const cat = dimension.categories[0];
+  const tile = document.createElement("div");
+  tile.className = "bd-tile";
+
+  const value = document.createElement("div");
+  value.className = "bd-tile__value";
+  value.textContent = fmtPct(cat.pct);
+  tile.appendChild(value);
+
+  const name = document.createElement("div");
+  name.className = "bd-tile__name";
+  name.textContent = `${cat.label} · ${fmtCount(cat.count)}`;
+  tile.appendChild(name);
+
+  return tile;
+}
+
+function renderCard(dimension) {
+  const card = document.createElement("div");
+  card.className = "bd-card";
+
+  const label = document.createElement("p");
+  label.className = "bd-card__label";
+  label.textContent = dimension.label;
+  card.appendChild(label);
+
+  const coverage = document.createElement("p");
+  coverage.className = "bd-card__coverage";
+  coverage.textContent =
+    dimension.noData > 0
+      ? `${fmtCount(dimension.withData)} with data · ${fmtCount(dimension.noData)} no data`
+      : `${fmtCount(dimension.withData)} with data`;
+  card.appendChild(coverage);
+
+  if (dimension.categories.length === 1) {
+    card.appendChild(renderTile(dimension));
+    return card;
+  }
+
+  card.appendChild(renderDonut(dimension));
+  card.appendChild(renderLegend(dimension));
+  return card;
+}
+
+/**
+ * Aggregate `results` and draw the breakdown into `container` (the <details>).
+ * Hides the container when there is nothing chartable.
+ */
+function renderBreakdown(results, container) {
+  if (!container) return;
+  const grid = container.querySelector("#breakdownGrid");
+  const coverage = container.querySelector("#breakdownCoverage");
+  if (!grid || !coverage) return;
+
+  const summary = computeBreakdown(results);
+  grid.textContent = "";
+
+  if (summary.dimensions.length === 0) {
+    container.hidden = true;
+    coverage.textContent = "";
+    return;
+  }
+
+  const parts = [`${fmtCount(summary.total)} results`, `${fmtCount(summary.okCount)} OK`];
+  if (summary.errorCount > 0) {
+    const plural = summary.errorCount === 1 ? "error" : "errors";
+    parts.push(`${fmtCount(summary.errorCount)} lookup ${plural}`);
+  }
+  // Cards can legitimately disagree on their totals, because each percentage is
+  // over the numbers that returned that field. Say so once here rather than
+  // caveating every card — and note "no data" absorbs the failed lookups above,
+  // so the two figures aren't additive.
+  coverage.textContent =
+    `${parts.join(" · ")}. Percentages are of the numbers that returned each ` +
+    `field, so totals differ per card; "no data" includes lookups that failed.`;
+
+  for (const dimension of summary.dimensions) {
+    grid.appendChild(renderCard(dimension));
+  }
+
+  attachInteractions(grid, summary.dimensions);
+  container.hidden = false;
+}
+
+function clearBreakdown(container) {
+  if (!container) return;
+  const grid = container.querySelector("#breakdownGrid");
+  const coverage = container.querySelector("#breakdownCoverage");
+  if (grid) grid.textContent = "";
+  if (coverage) coverage.textContent = "";
+  container.hidden = true;
+}
+
+/* Replaced in Task 10 with the real hover/focus wiring. */
+function attachInteractions() {}
+
 /* Requireable from node:test while staying a plain browser script. */
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
