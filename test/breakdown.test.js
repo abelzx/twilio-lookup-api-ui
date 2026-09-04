@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { pick, riskBand } = require("../assets/breakdown.js");
+const { pick, riskBand, DIMENSIONS } = require("../assets/breakdown.js");
 
 test("pick returns the first present key", () => {
   assert.equal(pick({ a: 1, b: 2 }, "a", "b"), 1);
@@ -49,4 +49,64 @@ test("riskBand rejects missing and out-of-range scores", () => {
 test("riskBand accepts numeric strings, since JSON is not always typed", () => {
   assert.equal(riskBand("44"), "Low");
   assert.equal(riskBand("95"), "High");
+});
+
+function dim(id) {
+  const d = DIMENSIONS.find((x) => x.id === id);
+  assert.ok(d, `no dimension registered with id ${id}`);
+  return d;
+}
+
+test("registry exposes the four expected dimensions in order", () => {
+  assert.deepEqual(DIMENSIONS.map((d) => d.id), [
+    "lineStatus",
+    "lineType",
+    "riskBand",
+    "country",
+  ]);
+});
+
+test("lineStatus extractor normalises casing and reads both key spellings", () => {
+  const d = dim("lineStatus");
+  assert.equal(d.extract({ line_status: { status: "reachable" } }), "Reachable");
+  assert.equal(d.extract({ lineStatus: { status: "INACTIVE" } }), "Inactive");
+  assert.equal(d.extract({ lineStatus: { status: "Unreachable" } }), "Unreachable");
+  assert.equal(d.extract({ lineStatus: null }), null);
+  assert.equal(d.extract({}), null);
+  // a package that errored carries error_code and no status
+  assert.equal(d.extract({ lineStatus: { error_code: 60600 } }), null);
+});
+
+test("lineType extractor preserves the API's camelCase enum values", () => {
+  const d = dim("lineType");
+  assert.equal(d.extract({ line_type_intelligence: { type: "mobile" } }), "mobile");
+  assert.equal(
+    d.extract({ lineTypeIntelligence: { type: "nonFixedVoip" } }),
+    "nonFixedVoip"
+  );
+  assert.equal(d.extract({ lineTypeIntelligence: { error_code: 60600 } }), null);
+  assert.equal(d.extract({}), null);
+});
+
+test("riskBand extractor reads either score spelling", () => {
+  const d = dim("riskBand");
+  assert.equal(
+    d.extract({ sms_pumping_risk: { sms_pumping_risk_score: 44 } }),
+    "Low"
+  );
+  assert.equal(
+    d.extract({ smsPumpingRisk: { smsPumpingRiskScore: 95 } }),
+    "High"
+  );
+  // score 0 is a real value, not "missing"
+  assert.equal(d.extract({ smsPumpingRisk: { sms_pumping_risk_score: 0 } }), "Low");
+  assert.equal(d.extract({ smsPumpingRisk: { error_code: 60600 } }), null);
+  assert.equal(d.extract({}), null);
+});
+
+test("country extractor upper-cases and reads both spellings", () => {
+  const d = dim("country");
+  assert.equal(d.extract({ country_code: "gb" }), "GB");
+  assert.equal(d.extract({ countryCode: "US" }), "US");
+  assert.equal(d.extract({}), null);
 });
