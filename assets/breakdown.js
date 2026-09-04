@@ -368,20 +368,27 @@ function renderDonut(dimension) {
   let cumulative = 0;
   dimension.categories.forEach((cat, i) => {
     const dash = Math.max(MIN_SEGMENT, cat.pct - SEGMENT_GAP);
-    const offset = 25 - cumulative;
     const shared = {
       cx: 21, cy: 21, r: 15.9, fill: "none",
       pathLength: 100,
-      "stroke-dasharray": `${dash} ${100 - dash}`,
-      "stroke-dashoffset": offset,
+      "stroke-dashoffset": 25 - cumulative,
     };
 
-    // Transparent wide companion first: the hit target, ~24px effective.
+    // Transparent wide companion first: the hit target. The 11-unit stroke only
+    // widens it radially; the arc must NOT inherit the visual gap, or a 1.5%
+    // segment shrinks to 0.6% of the ring — about 1px of arc, and unhittable.
+    // So the hit arc spans the segment's full extent. Neighbouring hit arcs then
+    // touch, which is harmless: they are invisible, and a boundary pixel
+    // resolving to either segment is fine. Sub-1% slices remain awkward to hit
+    // on the ring; their legend row is the dependable target, which is part of
+    // why the legend is the primary interactive surface.
     // pointer-events="stroke" is explicit so hit-testing does not depend on
     // whether a transparent stroke counts as "painted".
+    const hitDash = Math.max(MIN_SEGMENT, cat.pct);
     svg.appendChild(
       svgEl("circle", {
         ...shared,
+        "stroke-dasharray": `${hitDash} ${100 - hitDash}`,
         stroke: "transparent",
         "stroke-width": 11,
         "pointer-events": "stroke",
@@ -392,6 +399,7 @@ function renderDonut(dimension) {
     svg.appendChild(
       svgEl("circle", {
         ...shared,
+        "stroke-dasharray": `${dash} ${100 - dash}`,
         stroke: cat.color,
         "stroke-width": 5,
         class: "bd-donut__seg",
