@@ -304,6 +304,109 @@ function computeBreakdown(results) {
   return { total, okCount, errorCount: total - okCount, dimensions };
 }
 
+/* ---------------------------------------------------------------------------
+   Rendering. Everything below touches the DOM and is verified by running the
+   app, not by unit test. It is skipped entirely under node:test because
+   `document` is only referenced inside these functions.
+   --------------------------------------------------------------------------- */
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** Gap between segments, in percent-of-circumference units (~2px at 96px). */
+const SEGMENT_GAP = 0.9;
+/** Floor so a tiny slice still paints something rather than vanishing. */
+const MIN_SEGMENT = 0.5;
+
+function fmtCount(n) {
+  return Number(n).toLocaleString();
+}
+
+/** One decimal, never fudged to force the column to total exactly 100. */
+function fmtPct(pct) {
+  return `${pct.toFixed(1)}%`;
+}
+
+function svgEl(name, attrs) {
+  const node = document.createElementNS(SVG_NS, name);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+  return node;
+}
+
+function donutAriaLabel(dimension) {
+  const top = dimension.categories
+    .slice(0, 3)
+    .map((c) => `${c.label} ${fmtPct(c.pct)}`)
+    .join(", ");
+  return `${dimension.label}: ${top}. ${fmtCount(dimension.withData)} numbers with data.`;
+}
+
+function renderDonut(dimension) {
+  const svg = svgEl("svg", {
+    class: "bd-donut",
+    viewBox: "0 0 42 42",
+    role: "img",
+    "aria-label": donutAriaLabel(dimension),
+  });
+
+  svg.appendChild(
+    svgEl("circle", {
+      cx: 21, cy: 21, r: 15.9, fill: "none",
+      stroke: "var(--bd-track)", "stroke-width": 5,
+    })
+  );
+
+  let cumulative = 0;
+  dimension.categories.forEach((cat, i) => {
+    const dash = Math.max(MIN_SEGMENT, cat.pct - SEGMENT_GAP);
+    const offset = 25 - cumulative;
+    const shared = {
+      cx: 21, cy: 21, r: 15.9, fill: "none",
+      pathLength: 100,
+      "stroke-dasharray": `${dash} ${100 - dash}`,
+      "stroke-dashoffset": offset,
+    };
+
+    // Transparent wide companion first: the hit target, ~24px effective.
+    // pointer-events="stroke" is explicit so hit-testing does not depend on
+    // whether a transparent stroke counts as "painted".
+    svg.appendChild(
+      svgEl("circle", {
+        ...shared,
+        stroke: "transparent",
+        "stroke-width": 11,
+        "pointer-events": "stroke",
+        "data-index": i,
+      })
+    );
+
+    svg.appendChild(
+      svgEl("circle", {
+        ...shared,
+        stroke: cat.color,
+        "stroke-width": 5,
+        class: "bd-donut__seg",
+        "data-index": i,
+      })
+    );
+
+    cumulative += cat.pct;
+  });
+
+  const total = svgEl("text", {
+    class: "bd-donut__total", x: 21, y: 20.4, "text-anchor": "middle",
+  });
+  total.textContent = fmtCount(dimension.withData);
+  svg.appendChild(total);
+
+  const caption = svgEl("text", {
+    class: "bd-donut__caption", x: 21, y: 24.6, "text-anchor": "middle",
+  });
+  caption.textContent = "NUMBERS";
+  svg.appendChild(caption);
+
+  return svg;
+}
+
 /* Requireable from node:test while staying a plain browser script. */
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
