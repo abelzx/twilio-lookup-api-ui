@@ -20,7 +20,23 @@ function pick(obj, ...names) {
   return undefined;
 }
 
+/**
+ * SMS pumping risk score (0-100) to a band, per Twilio's published guidance:
+ * Low 0-60, Mild 60-75, Moderate 75-90, High 90-100.
+ * https://www.twilio.com/docs/lookup/v2-api/sms-pumping-risk
+ * Half-open boundaries, so 60 is Mild (not Low) and 100 is High.
+ */
+function riskBand(score) {
+  if (score === null || score === undefined || score === "") return null;
+  const s = Number(score);
+  if (!Number.isFinite(s) || s < 0 || s > 100) return null;
+  if (s < 60) return "Low";
+  if (s < 75) return "Mild";
+  if (s < 90) return "Moderate";
+  return "High";
+}
+
 /* Requireable from node:test while staying a plain browser script. */
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { pick };
+  module.exports = { pick, riskBand };
 }
