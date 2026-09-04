@@ -28,9 +28,12 @@ jobs:
 
       - name: Syntax-check Functions and frontend
         run: |
-          for f in functions/*.js assets/app.js; do
+          for f in functions/*.js assets/*.js; do
             node --check "$f" && echo "ok  $f"
           done
+
+      - name: Unit tests
+        run: npm test
 
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
