@@ -390,3 +390,16 @@ test("percentages sum to about 100 and are not fudged", () => {
   assert.ok(Math.abs(sum - 100) < 1e-9, `expected ~100, got ${sum}`);
   assert.ok(Math.abs(cats[0].pct - 33.3333333) < 0.001);
 });
+
+test("Other has the same shape as a regular category", () => {
+  // The renderer iterates categories uniformly, but Other is hand-built rather
+  // than going through makeCategory — so the two shapes must stay in lockstep.
+  const cats = typeCats({
+    mobile: 100, landline: 50, fixedVoip: 25, nonFixedVoip: 12,
+    tollFree: 6, premium: 3, sharedCost: 2, pager: 1,
+  });
+  const other = cats[cats.length - 1];
+  const regular = cats[0];
+  assert.equal(other.label, "Other (3)", "fixture should be producing a fold");
+  assert.deepEqual(Object.keys(other).sort(), Object.keys(regular).sort());
+});

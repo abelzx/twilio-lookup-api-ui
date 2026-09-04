@@ -35,8 +35,12 @@ const CATEGORICAL = [
   "#008300",
 ];
 
-/** Max donut slices before folding into "Other". */
-const MAX_SLICES = 6;
+/**
+ * Max donut slices before folding into "Other" — derived from the palette so the
+ * two can't drift. If this were bumped past the number of validated hues, a real
+ * named category would fall back to NEUTRAL and be indistinguishable from "Other".
+ */
+const MAX_SLICES = CATEGORICAL.length;
 
 /** Status dot colours. Always paired with a text label, never colour alone. */
 const STATUS_COLORS = { warning: "#fab219", critical: "#d03b3b" };
@@ -215,9 +219,11 @@ function nominalCategories(dim, counts) {
   let visible = all;
   let folded = [];
   if (all.length > MAX_SLICES) {
+    // One slot goes to "Other", so only MAX_SLICES - 1 real categories survive.
+    const keepCount = MAX_SLICES - 1;
     const ranked = [...all].sort(byCount);
-    visible = ranked.slice(0, MAX_SLICES - 1);
-    folded = ranked.slice(MAX_SLICES - 1);
+    visible = ranked.slice(0, keepCount);
+    folded = ranked.slice(keepCount);
   }
 
   // Hue by position in stable key order over the visible set.
