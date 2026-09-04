@@ -40,8 +40,28 @@ full run shows four.
 |---|---|---|---|---|
 | `lineStatus` | Line status | `lineStatus.status` | ordinal | Reachable, Active, Unreachable, Inactive, Unknown |
 | `lineType` | Line type | `lineTypeIntelligence.type` | nominal | up to 11 Twilio values, folded (§3) |
+| `carrier` | Carrier | `lineTypeIntelligence.carrier_name` | nominal | free text, high cardinality, folded (§3) |
 | `riskBand` | SMS pumping risk | `smsPumpingRisk.sms_pumping_risk_score` | ordinal | Low, Mild, Moderate, High |
 | `country` | Country | `countryCode` | nominal | folded (§3) |
+
+### Carrier
+
+`carrier` sits next to `lineType` because both come from the same package, and
+because their denominators diverge in a way worth seeing side by side. Twilio
+returns **no carrier data for `personal`, `tollFree`, `premium`, `sharedCost`,
+`uan`, `voicemail`, `pager` or `unknown`** — 8 of the 12 line types — so
+`carrier_name` is null for those rows even though `line_type_intelligence`
+succeeded. A run of 2,405 numbers with 210 toll-free shows `2,405 with data` on
+the Line type card and `2,195 with data · 210 no data` on the Carrier card. That
+is correct, and it is exactly what the per-dimension denominator rule (§2) exists
+for: dividing carrier share by the run total would understate every carrier.
+
+It is the only free-text dimension, so it is the only one that gets `.trim()`,
+and a blank name counts as no data rather than becoming a category called `""`.
+Being free text it is also the only high-cardinality one — a global run can
+produce 50–200 distinct carriers, which makes `Other (n)` routine rather than
+exceptional and drove the tooltip cap in §7. Long names (`Comcast Business
+Communications, LLC`) ellipsize in the legend with the full name on `title`.
 
 ### Key casing
 
@@ -269,7 +289,12 @@ SVG `stroke-dasharray` on concentric circles: `viewBox="0 0 42 42"`, `r=15.9`,
 - Legend rows are focusable and are the primary accessible interactive surface —
   the dependable target for any category, and the only one for the smallest
   slices. Ring hover is a convenience on top of it, never the sole path.
-- `Other` tooltip lists the folded categories and counts
+- `Other` tooltip lists the folded categories and counts, capped at 5 with
+  `…and N more — export CSV for all`. Uncapped, a carrier fold of 200 produced a
+  tooltip that covered the entire legend it was summarising; the full set is
+  always in the CSV export, so nothing is lost by truncating here.
+- The tooltip sits above its anchor, but flips below when there is not room —
+  measured after it is populated, since its height depends on the folded list
 - No entrance animation, so there is nothing to suppress under
   `prefers-reduced-motion`
 

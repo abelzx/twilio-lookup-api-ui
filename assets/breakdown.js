@@ -130,6 +130,25 @@ const DIMENSIONS = [
     },
   },
   {
+    id: "carrier",
+    label: "Carrier",
+    scale: "nominal",
+    // Free-text names have no canonical order, so — like country — hues follow
+    // count rank and the dominant carrier takes slot 1.
+    keyOrder: null,
+    extract(data) {
+      const raw = pick(
+        pick(data, "line_type_intelligence", "lineTypeIntelligence"),
+        "carrier_name",
+        "carrierName"
+      );
+      if (raw === undefined) return null;
+      // The only free-text field here, so it is the only one worth trimming; a
+      // blank name is no data rather than a category called "".
+      return String(raw).trim() || null;
+    },
+  },
+  {
     id: "riskBand",
     label: "SMS pumping risk",
     scale: "ordinal",
@@ -336,6 +355,13 @@ const SEGMENT_GAP = 0.9;
  * legend carries every value in text, which is the real mitigation.
  */
 const MIN_SEGMENT = 0.5;
+
+/**
+ * How many folded members the "Other" tooltip lists before summarising the rest.
+ * Carrier names are free-text and high-cardinality — a global run can fold 200 —
+ * and an uncapped list would run off the screen. Full set stays in the CSV export.
+ */
+const MAX_FOLDED_IN_TOOLTIP = 5;
 
 function fmtCount(n) {
   return Number(n).toLocaleString();
@@ -604,14 +630,22 @@ function fillTooltip(tip, cat) {
   head.textContent = `${cat.label} — ${fmtPct(cat.pct)} (${fmtCount(cat.count)})`;
   tip.appendChild(head);
 
-  // "Other" would otherwise hide what it folded.
+  // "Other" would otherwise hide what it folded. Capped because carrier names are
+  // free-text and high-cardinality — a global run can fold 200 of them, and an
+  // uncapped list would run off the screen. The full set is always in the CSV.
   if (Array.isArray(cat.folded) && cat.folded.length > 0) {
     const list = document.createElement("ul");
     list.className = "bd-tooltip__folded";
-    for (const f of cat.folded) {
+    for (const f of cat.folded.slice(0, MAX_FOLDED_IN_TOOLTIP)) {
       const item = document.createElement("li");
       item.textContent = `${f.label} · ${fmtCount(f.count)}`;
       list.appendChild(item);
+    }
+    const hidden = cat.folded.length - MAX_FOLDED_IN_TOOLTIP;
+    if (hidden > 0) {
+      const more = document.createElement("li");
+      more.textContent = `…and ${fmtCount(hidden)} more — export CSV for all`;
+      list.appendChild(more);
     }
     tip.appendChild(list);
   }
@@ -624,8 +658,18 @@ function positionTooltip(tip, grid, target) {
   const left = box.left - hostBox.left + box.width / 2;
   const top = box.top - hostBox.top;
   tip.style.left = `${Math.max(4, Math.min(left, hostBox.width - 4))}px`;
-  tip.style.top = `${Math.max(4, top)}px`;
-  tip.style.transform = "translate(-50%, calc(-100% - 6px))";
+
+  // Sits above the anchor by default, but a tall "Other" list near the top of the
+  // block would be clipped, so flip below when there isn't room. Measured after
+  // fillTooltip has populated it, which is why this runs last.
+  const fitsAbove = top - tip.offsetHeight - 6 >= 0;
+  if (fitsAbove) {
+    tip.style.top = `${top}px`;
+    tip.style.transform = "translate(-50%, calc(-100% - 6px))";
+  } else {
+    tip.style.top = `${top + box.height}px`;
+    tip.style.transform = "translate(-50%, 6px)";
+  }
 }
 
 /**

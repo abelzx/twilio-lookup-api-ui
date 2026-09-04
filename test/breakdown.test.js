@@ -63,10 +63,13 @@ function dim(id) {
   return d;
 }
 
-test("registry exposes the four expected dimensions in order", () => {
+test("registry exposes the five expected dimensions in order", () => {
+  // carrier sits next to lineType because both come from the
+  // line_type_intelligence package.
   assert.deepEqual(DIMENSIONS.map((d) => d.id), [
     "lineStatus",
     "lineType",
+    "carrier",
     "riskBand",
     "country",
   ]);
@@ -420,4 +423,93 @@ test("lineType keeps entity-stable hues while country uses count rank", () => {
   const countries = out.dimensions.find((d) => d.id === "country").categories;
   assert.equal(countries.find((c) => c.label === "ZW").color, "#2a78d6");
   assert.equal(countries.find((c) => c.label === "AU").color, "#eb6834");
+});
+
+/** Build results where each carrier name appears `n` times. */
+function carrierResults(spec) {
+  const out = [];
+  for (const [carrier_name, n] of Object.entries(spec)) {
+    for (let i = 0; i < n; i++) {
+      out.push({
+        ok: true,
+        data: { lineTypeIntelligence: { type: "mobile", carrier_name } },
+      });
+    }
+  }
+  return out;
+}
+
+function carrierCats(spec) {
+  const out = computeBreakdown(carrierResults(spec));
+  return out.dimensions.find((d) => d.id === "carrier").categories;
+}
+
+test("carrier extractor reads both key spellings", () => {
+  const d = dim("carrier");
+  assert.equal(
+    d.extract({ line_type_intelligence: { carrier_name: "T-Mobile USA, Inc." } }),
+    "T-Mobile USA, Inc."
+  );
+  assert.equal(
+    d.extract({ lineTypeIntelligence: { carrierName: "Twilio - SMS/MMS-SVR" } }),
+    "Twilio - SMS/MMS-SVR"
+  );
+  assert.equal(d.extract({}), null);
+  assert.equal(d.extract({ lineTypeIntelligence: { error_code: 60601 } }), null);
+});
+
+test("carrier is null for the line types Twilio returns no carrier for", () => {
+  // Per Twilio's docs, carrier_name is null for tollFree, premium, sharedCost,
+  // uan, voicemail, pager, personal and unknown — 8 of the 12 types. So the
+  // carrier card's denominator is legitimately smaller than line type's.
+  const d = dim("carrier");
+  assert.equal(
+    d.extract({ lineTypeIntelligence: { type: "tollFree", carrier_name: null } }),
+    null
+  );
+  const out = computeBreakdown([
+    { ok: true, data: { lineTypeIntelligence: { type: "mobile", carrier_name: "AT&T" } } },
+    { ok: true, data: { lineTypeIntelligence: { type: "tollFree", carrier_name: null } } },
+    { ok: true, data: { lineTypeIntelligence: { type: "pager", carrier_name: null } } },
+  ]);
+  const lineType = out.dimensions.find((d) => d.id === "lineType");
+  const carrier = out.dimensions.find((d) => d.id === "carrier");
+  assert.equal(lineType.withData, 3, "all three have a line type");
+  assert.equal(carrier.withData, 1, "only the mobile one has a carrier");
+  assert.equal(carrier.noData, 2);
+  assert.equal(carrier.categories[0].pct, 100, "100% of carriers found, not 33%");
+});
+
+test("carrier trims whitespace and treats blank as no data", () => {
+  const d = dim("carrier");
+  assert.equal(d.extract({ lineTypeIntelligence: { carrier_name: "  AT&T  " } }), "AT&T");
+  assert.equal(d.extract({ lineTypeIntelligence: { carrier_name: "   " } }), null);
+  assert.equal(d.extract({ lineTypeIntelligence: { carrier_name: "" } }), null);
+});
+
+test("carrier hues follow count rank, like country", () => {
+  // Free-text names have no canonical order, so the dominant carrier should take
+  // slot 1 rather than whatever its initial letter dictates.
+  const cats = carrierCats({ "Zed Telecom": 100, "Acme Mobile": 5 });
+  assert.deepEqual(cats.map((c) => c.label), ["Zed Telecom", "Acme Mobile"]);
+  assert.equal(cats.find((c) => c.label === "Zed Telecom").color, "#2a78d6");
+  assert.equal(cats.find((c) => c.label === "Acme Mobile").color, "#eb6834");
+});
+
+test("high-cardinality carriers fold into Other with every member kept", () => {
+  // A realistic global run has far more carriers than slices. Top 5 survive; the
+  // rest fold, and the folded list keeps all of them for the tooltip/CSV.
+  const spec = {};
+  for (let i = 0; i < 40; i++) spec[`Carrier ${String(i).padStart(2, "0")}`] = 40 - i;
+  const cats = carrierCats(spec);
+  assert.equal(cats.length, MAX_SLICES, "still capped at the palette size");
+  const other = cats[cats.length - 1];
+  assert.equal(other.label, "Other (35)", "40 carriers minus the 5 kept");
+  assert.equal(other.color, "#8891AA");
+  assert.equal(other.folded.length, 35, "no folded carrier is dropped");
+  // folded stays count-descending
+  const counts = other.folded.map((f) => f.count);
+  assert.deepEqual(counts, [...counts].sort((a, b) => b - a));
+  // and Other's count is the sum of its members
+  assert.equal(other.count, counts.reduce((s, c) => s + c, 0));
 });
