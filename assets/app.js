@@ -775,7 +775,16 @@ async function runLookup() {
     }
     lastResponse = results;
     renderTable(results);
-    renderBreakdown(results, el("breakdownBlock"));
+    // The breakdown is a summary of the table, so it must never be able to take
+    // the table down with it: an unexpected throw in chart rendering would
+    // otherwise land in the catch below, report a successful run as failed, and
+    // wipe the results that rendered fine.
+    try {
+      renderBreakdown(results, el("breakdownBlock"));
+    } catch (err) {
+      console.warn("breakdown: render failed, continuing without it", err);
+      clearBreakdown(el("breakdownBlock"));
+    }
     el("exportCsv").disabled = !results.length;
     const skipNote =
       skip > 0 ? `Skipped first ${skip.toLocaleString()} (not in this export). ` : "";
@@ -801,7 +810,11 @@ async function runLookup() {
       el("rawJson").textContent = "";
       el("resultCount").textContent = "0 rows";
       el("previewNote").hidden = true;
-      clearBreakdown(el("breakdownBlock"));
+      try {
+        clearBreakdown(el("breakdownBlock"));
+      } catch (err) {
+        console.warn("breakdown: clear failed", err);
+      }
     }
   } finally {
     el("runLookup").disabled = false;
