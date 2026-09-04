@@ -17,6 +17,7 @@
     "bulk-lookup"
   ],
   "scripts": {
+    "test": "node --test",
     "dev": "twilio serverless:start",
     "deploy": "twilio serverless:deploy",
     "deploy:verify-24": "twilio serverless:deploy --runtime node24 --environment verify-24",
