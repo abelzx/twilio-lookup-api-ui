@@ -195,9 +195,16 @@ function computeBreakdown(results) {
       let value = null;
       try {
         value = dim.extract(r.data);
-      } catch {
-        value = null; // a malformed row must not take down the panel
+      } catch (err) {
+        // A malformed row must not take down the panel, but stay noisy about it:
+        // an extractor throwing for EVERY row looks identical to a field the
+        // network simply doesn't return, and that silence would hide a real bug.
+        console.warn(`breakdown: ${dim.id} extractor threw, counting as no data`, err);
+        value = null;
       }
+      // "" is filtered here rather than inside `pick` or each extractor: `pick`
+      // answers "is this key populated", while "empty means no data" is an
+      // aggregation rule that belongs in exactly one place.
       if (value === null || value === undefined || value === "") continue;
       withData++;
       counts.set(value, (counts.get(value) || 0) + 1);
