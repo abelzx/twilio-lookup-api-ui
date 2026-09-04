@@ -567,7 +567,7 @@ function renderBreakdown(results, container) {
   }
   coverage.textContent = notes.length
     ? `${parts.join(" · ")}. ${notes.join("; ")}.`
-    : parts.join(" · ");
+    : `${parts.join(" · ")}.`;
 
   for (const dimension of summary.dimensions) {
     grid.appendChild(renderCard(dimension));
