@@ -260,8 +260,15 @@ SVG `stroke-dasharray` on concentric circles: `viewBox="0 0 42 42"`, `r=15.9`,
 - Hover or focus a legend row → the matching segment is emphasised (others drop
   in opacity); keyboard focus shows exactly what hover shows
 - Segments are thin, so each carries a transparent wider-stroke companion circle
-  as its hit target (~24px effective)
-- Legend rows are focusable and are the primary accessible interactive surface
+  as its hit target. This widens the target **radially only** (~24px); it does
+  nothing for a segment's angular extent, so the hit arc must span the segment's
+  full `pct` rather than the gap-reduced visual dash. Getting that wrong made a
+  1.5% segment 0.6% of the ring — about 1px of arc, unhittable — which only
+  surfaced by driving the real ring in a browser. Sub-1% slices remain awkward to
+  hit on the ring regardless; that is a limit of the form, not a defect.
+- Legend rows are focusable and are the primary accessible interactive surface —
+  the dependable target for any category, and the only one for the smallest
+  slices. Ring hover is a convenience on top of it, never the sole path.
 - `Other` tooltip lists the folded categories and counts
 - No entrance animation, so there is nothing to suppress under
   `prefers-reduced-motion`
