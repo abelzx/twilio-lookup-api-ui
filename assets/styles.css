@@ -735,3 +735,184 @@ code {
   max-height: 320px;
   overflow: auto;
 }
+
+/* ---------------------------------------------------------------------------
+   Results breakdown — one donut per returned Lookup data package.
+   Colours live in breakdown.js (validated against the .details surface,
+   #F9FAFB). Only layout and text tokens belong here.
+   --------------------------------------------------------------------------- */
+.breakdown {
+  /* segment gaps and the donut track must match the surface behind them */
+  --bd-surface: var(--surface-hover);
+  --bd-track: #EDEFF4;
+  position: relative;
+}
+
+.breakdown__coverage {
+  margin: 0 0 0.9rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.breakdown__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1.25rem 1rem;
+}
+
+.bd-card {
+  min-width: 0; /* let long legend labels ellipsize instead of widening the grid */
+}
+
+.bd-card__label {
+  margin: 0 0 0.1rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text);
+}
+
+.bd-card__coverage {
+  margin: 0 0 0.55rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-donut {
+  display: block;
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 0.6rem;
+}
+
+.bd-donut__seg {
+  transition: opacity 0.12s ease;
+}
+
+/* Emphasis: dim the others rather than recolouring the hovered one. */
+.bd-card--focus .bd-donut__seg {
+  opacity: 0.28;
+}
+
+.bd-card--focus .bd-donut__seg--on {
+  opacity: 1;
+}
+
+.bd-donut__total {
+  fill: var(--text);
+  font-size: 6.2px;
+  font-weight: 600;
+}
+
+.bd-donut__caption {
+  fill: var(--text-muted);
+  font-size: 2.7px;
+  letter-spacing: 0.18px;
+}
+
+.bd-legend {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bd-legend__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.14rem 0.25rem;
+  border-radius: 4px;
+  font-size: 0.74rem;
+}
+
+.bd-legend__row:hover,
+.bd-legend__row:focus-visible {
+  background: var(--surface);
+  outline: none;
+}
+
+.bd-legend__row:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent-light), 0 0 0 3px var(--accent);
+}
+
+.bd-legend__swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+/* Status is carried by a dot AND the adjacent name — never colour alone. */
+.bd-legend__status {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 0.3rem;
+  vertical-align: 0.05em;
+}
+
+.bd-legend__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.bd-legend__value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-legend__count {
+  margin-left: 0.35rem;
+  font-style: normal;
+  color: var(--text-muted);
+}
+
+/* Single-category dimension: the number is the chart. */
+.bd-tile {
+  padding: 0.5rem 0 0.2rem;
+}
+
+.bd-tile__value {
+  font-size: 1.45rem;
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--text);
+}
+
+.bd-tile__name {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+
+.bd-tooltip {
+  position: absolute;
+  z-index: 20;
+  max-width: 15rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 6px;
+  background: var(--twilio-navy);
+  color: #fff;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  pointer-events: none;
+  box-shadow: var(--shadow-md);
+}
+
+.bd-tooltip[hidden] {
+  display: none;
+}
+
+.bd-tooltip__folded {
+  margin: 0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: rgba(255, 255, 255, 0.75);
+  font-variant-numeric: tabular-nums;
+}

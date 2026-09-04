@@ -187,6 +187,11 @@
               <h2>Results</h2>
               <span class="badge" id="resultCount">0 rows</span>
             </div>
+            <details class="details breakdown" id="breakdownBlock" open hidden>
+              <summary>Breakdown</summary>
+              <p class="breakdown__coverage" id="breakdownCoverage" aria-live="polite"></p>
+              <div class="breakdown__grid" id="breakdownGrid"></div>
+            </details>
             <div class="table-wrap">
               <table class="results-table" id="resultsTable">
                 <thead>
@@ -209,6 +214,7 @@
       </div>
     </div>
 
+    <script src="/breakdown.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>
