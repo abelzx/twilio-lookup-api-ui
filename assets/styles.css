@@ -742,10 +742,11 @@ code {
    #F9FAFB). Only layout and text tokens belong here.
    --------------------------------------------------------------------------- */
 .breakdown {
-  /* segment gaps and the donut track must match the surface behind them */
-  --bd-surface: var(--surface-hover);
+  /* The track is a full ring under the segments, so it is what shows through
+     the 0.9-unit gaps between them — one step off the surface, light enough to
+     read as separation without competing with the data. */
   --bd-track: #EDEFF4;
-  position: relative;
+  position: relative; /* anchors the absolutely-positioned tooltip */
 }
 
 .breakdown__coverage {
