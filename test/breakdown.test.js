@@ -181,3 +181,64 @@ test("computeBreakdown survives a row whose extractor throws", () => {
   const country = out.dimensions.find((d) => d.id === "country");
   assert.equal(country.withData, 1);
 });
+
+/** Build results where each line status value appears `n` times. */
+function statusResults(spec) {
+  const out = [];
+  for (const [status, n] of Object.entries(spec)) {
+    for (let i = 0; i < n; i++) {
+      out.push({ ok: true, data: { lineStatus: { status } } });
+    }
+  }
+  return out;
+}
+
+function statusCats(spec) {
+  const out = computeBreakdown(statusResults(spec));
+  return out.dimensions.find((d) => d.id === "lineStatus").categories;
+}
+
+test("ordinal categories keep their fixed order regardless of count", () => {
+  // Inactive is the largest, but order is severity, not size.
+  const cats = statusCats({ inactive: 100, reachable: 5, active: 1 });
+  assert.deepEqual(cats.map((c) => c.label), ["Reachable", "Active", "Inactive"]);
+});
+
+test("ordinal categories omit values absent from the run", () => {
+  const cats = statusCats({ reachable: 3, inactive: 2 });
+  assert.deepEqual(cats.map((c) => c.label), ["Reachable", "Inactive"]);
+});
+
+test("ordinal ramp size matches the number of non-neutral categories", () => {
+  const cats = statusCats({ reachable: 1, active: 1, unreachable: 1, inactive: 1 });
+  assert.deepEqual(cats.map((c) => c.color), [
+    "#86b6ef",
+    "#2a78d6",
+    "#1c5cab",
+    "#104281",
+  ]);
+});
+
+test("Unknown takes the neutral grey and sorts last", () => {
+  const cats = statusCats({ reachable: 5, unknown: 2, inactive: 1 });
+  assert.deepEqual(cats.map((c) => c.label), ["Reachable", "Inactive", "Unknown"]);
+  assert.equal(cats[cats.length - 1].color, "#8891AA");
+  // the two ramped categories share a 2-step ramp
+  assert.deepEqual(cats.slice(0, 2).map((c) => c.color), ["#86b6ef", "#104281"]);
+});
+
+test("an unrecognised ordinal value is treated as neutral, not given a ramp step", () => {
+  const cats = statusCats({ reachable: 3, teleported: 1 });
+  const odd = cats.find((c) => c.label === "Teleported");
+  assert.ok(odd, "unknown value should still appear as its own category");
+  assert.equal(odd.color, "#8891AA");
+  assert.equal(cats[cats.length - 1].label, "Teleported");
+});
+
+test("ordinal categories carry status roles for the notable states", () => {
+  const cats = statusCats({ reachable: 1, unreachable: 1, inactive: 1 });
+  const byLabel = Object.fromEntries(cats.map((c) => [c.label, c.statusRole]));
+  assert.equal(byLabel.Reachable, null);
+  assert.equal(byLabel.Unreachable, "warning");
+  assert.equal(byLabel.Inactive, "critical");
+});

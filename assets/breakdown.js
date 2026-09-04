@@ -154,23 +154,52 @@ const DIMENSIONS = [
 ];
 
 /*
- * Temporary stubs. Task 5 replaces ordinalCategories with real severity
- * ordering and colour-ramp assignment; Task 6 replaces nominalCategories with
- * count ordering, hue assignment, and fold-to-Other. Do not implement that
- * logic here.
+ * Temporary stub. Task 6 replaces nominalCategories with count ordering, hue
+ * assignment, and fold-to-Other. Do not implement that logic here.
+ */
+
+/**
+ * Fixed severity order, ramped colours for the known non-neutral values.
+ * Neutral values (Unknown) and any value Twilio adds that we don't recognise sort
+ * last in grey — extending the ramp past 5 steps would break its lightness gaps.
  */
 function ordinalCategories(dim, counts) {
-  return [...counts.entries()].map(([label, count]) => ({
+  const neutralLabels = new Set(dim.neutral || []);
+  const present = [...counts.keys()];
+  const known = dim.order.filter((label) => counts.has(label));
+  const unrecognised = present
+    .filter((label) => !dim.order.includes(label))
+    .sort((a, b) => a.localeCompare(b));
+
+  const ramped = known.filter((label) => !neutralLabels.has(label));
+  const greyed = [...known.filter((label) => neutralLabels.has(label)), ...unrecognised];
+
+  const rampKey = Math.min(Math.max(ramped.length, 1), 5);
+  const ramp = ORDINAL_RAMPS[rampKey];
+
+  const out = ramped.map((label, i) =>
+    makeCategory(dim, label, counts.get(label), ramp[i] || NEUTRAL)
+  );
+  for (const label of greyed) {
+    out.push(makeCategory(dim, label, counts.get(label), NEUTRAL));
+  }
+  return out;
+}
+
+function makeCategory(dim, label, count, color) {
+  return {
     label,
     count,
-    color: NEUTRAL,
-    statusRole: null,
+    color,
+    statusRole: (dim.statusRole || {})[label] || null,
     folded: null,
-  }));
+  };
 }
 
 function nominalCategories(dim, counts) {
-  return ordinalCategories(dim, counts);
+  return [...counts.entries()].map(([label, count]) =>
+    makeCategory(dim, label, count, NEUTRAL)
+  );
 }
 
 /**
