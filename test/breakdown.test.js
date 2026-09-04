@@ -242,3 +242,43 @@ test("ordinal categories carry status roles for the notable states", () => {
   assert.equal(byLabel.Unreachable, "warning");
   assert.equal(byLabel.Inactive, "critical");
 });
+
+test("an all-unrecognised ordinal run greys everything and sorts alphabetically", () => {
+  // No known values at all: exercises the ramped.length === 0 clamp, and the
+  // localeCompare sort that every other test leaves unrun with only one value.
+  const cats = statusCats({ zebra: 1, apple: 2 });
+  assert.deepEqual(cats.map((c) => c.label), ["Apple", "Zebra"]);
+  assert.deepEqual(cats.map((c) => c.color), ["#8891AA", "#8891AA"]);
+  assert.equal(cats.find((c) => c.label === "Apple").count, 2);
+});
+
+test("riskBand dimension ramps its four bands and carries status roles", () => {
+  // Counts are deliberately not in band order — Mild is largest, Low smallest —
+  // so this also proves the fixed order isn't incidentally count order.
+  const byScore = { 10: 1, 65: 4, 80: 2, 95: 3 };
+  const results = [];
+  for (const [score, n] of Object.entries(byScore)) {
+    for (let i = 0; i < n; i++) {
+      results.push({
+        ok: true,
+        data: { smsPumpingRisk: { sms_pumping_risk_score: Number(score) } },
+      });
+    }
+  }
+  const cats = computeBreakdown(results).dimensions.find(
+    (d) => d.id === "riskBand"
+  ).categories;
+
+  assert.deepEqual(cats.map((c) => c.label), ["Low", "Mild", "Moderate", "High"]);
+  assert.deepEqual(cats.map((c) => c.color), [
+    "#86b6ef",
+    "#2a78d6",
+    "#1c5cab",
+    "#104281",
+  ]);
+  const byLabel = Object.fromEntries(cats.map((c) => [c.label, c.statusRole]));
+  assert.equal(byLabel.Low, null);
+  assert.equal(byLabel.Mild, null);
+  assert.equal(byLabel.Moderate, "warning");
+  assert.equal(byLabel.High, "critical");
+});
