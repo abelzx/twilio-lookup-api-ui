@@ -370,7 +370,7 @@ test("count ties are broken by stable key order, not insertion order", () => {
   assert.deepEqual(b.map((c) => c.label), ["mobile", "landline"]);
 });
 
-test("country falls back to alphabetical key order for hues", () => {
+test("country hues follow count rank, since alphabetical order means nothing", () => {
   const out = computeBreakdown([
     { ok: true, data: { countryCode: "US" } },
     { ok: true, data: { countryCode: "US" } },
@@ -379,9 +379,11 @@ test("country falls back to alphabetical key order for hues", () => {
   const cats = out.dimensions.find((d) => d.id === "country").categories;
   // slice order by count: US then AU
   assert.deepEqual(cats.map((c) => c.label), ["US", "AU"]);
-  // hue order alphabetical: AU takes slot 1
-  assert.equal(cats.find((c) => c.label === "AU").color, "#2a78d6");
-  assert.equal(cats.find((c) => c.label === "US").color, "#eb6834");
+  // hue by count rank, NOT alphabetical — the dominant slice gets slot 1 so the
+  // biggest wedge is the strongest colour rather than whatever its initial
+  // letter dictated.
+  assert.equal(cats.find((c) => c.label === "US").color, "#2a78d6");
+  assert.equal(cats.find((c) => c.label === "AU").color, "#eb6834");
 });
 
 test("percentages sum to about 100 and are not fudged", () => {
@@ -402,4 +404,20 @@ test("Other has the same shape as a regular category", () => {
   const regular = cats[0];
   assert.equal(other.label, "Other (3)", "fixture should be producing a fold");
   assert.deepEqual(Object.keys(other).sort(), Object.keys(regular).sort());
+});
+
+test("lineType keeps entity-stable hues while country uses count rank", () => {
+  // lineType has a canonical order, so mobile is blue even when it is smallest.
+  const types = typeCats({ tollFree: 100, mobile: 1 });
+  assert.equal(types.find((c) => c.label === "mobile").color, "#2a78d6");
+  assert.equal(types[0].label, "tollFree", "slice order still follows count");
+
+  // country has none, so the largest takes slot 1 instead.
+  const out = computeBreakdown([
+    ...Array.from({ length: 100 }, () => ({ ok: true, data: { countryCode: "ZW" } })),
+    { ok: true, data: { countryCode: "AU" } },
+  ]);
+  const countries = out.dimensions.find((d) => d.id === "country").categories;
+  assert.equal(countries.find((c) => c.label === "ZW").color, "#2a78d6");
+  assert.equal(countries.find((c) => c.label === "AU").color, "#eb6834");
 });

@@ -196,8 +196,12 @@ function makeCategory(dim, label, count, color) {
 }
 
 /**
- * Nominal dimensions: slices ordered by count (biggest first), but hues assigned by
- * stable key order so a category's colour never changes because its count moved.
+ * Nominal dimensions: slices ordered by count (biggest first). Hue assignment
+ * depends on whether the dimension has a canonical order: dimensions with one
+ * (lineType) get entity-stable hues by that order, so a category's colour never
+ * changes because its count moved. Dimensions without one (country) assign hues
+ * by count rank instead, since alphabetical order carries no meaning a reader
+ * could internalise — see the hue-assignment block below for why.
  * Past MAX_SLICES categories, the tail folds into a grey "Other (n)" that sorts last.
  *
  * Stability caveat, by design: there are 6 slots and up to 11 line types, so the
@@ -226,9 +230,15 @@ function nominalCategories(dim, counts) {
     folded = ranked.slice(keepCount);
   }
 
-  // Hue by position in stable key order over the visible set.
+  // Hue by position in stable key order over the visible set — so a category is
+  // never repainted because its count moved. Exception: dimensions with no
+  // canonical order (country) sort alphabetically, which carries no meaning a
+  // reader could internalise, and handed the dominant slice whatever hue its
+  // initial letter dictated — a 72.8% US slice came out pale magenta. There,
+  // count rank at least reads intentionally.
+  const hueOrder = dim.keyOrder ? byKey : byCount;
   const colorFor = new Map();
-  [...visible].sort(byKey).forEach((c, i) => {
+  [...visible].sort(hueOrder).forEach((c, i) => {
     colorFor.set(c.label, CATEGORICAL[i] || NEUTRAL);
   });
 
