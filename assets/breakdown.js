@@ -153,11 +153,6 @@ const DIMENSIONS = [
   },
 ];
 
-/*
- * Temporary stub. Task 6 replaces nominalCategories with count ordering, hue
- * assignment, and fold-to-Other. Do not implement that logic here.
- */
-
 /**
  * Fixed severity order, ramped colours for the known non-neutral values.
  * Neutral values (Unknown) and any value Twilio adds that we don't recognise sort
@@ -196,10 +191,55 @@ function makeCategory(dim, label, count, color) {
   };
 }
 
+/**
+ * Nominal dimensions: slices ordered by count (biggest first), but hues assigned by
+ * stable key order so a category's colour never changes because its count moved.
+ * Past MAX_SLICES categories, the tail folds into a grey "Other (n)" that sorts last.
+ *
+ * Stability caveat, by design: there are 6 slots and up to 11 line types, so the
+ * mapping is stable for a given set of visible categories. Two runs whose visible
+ * sets differ can assign the same category to different slots.
+ */
 function nominalCategories(dim, counts) {
-  return [...counts.entries()].map(([label, count]) =>
-    makeCategory(dim, label, count, NEUTRAL)
-  );
+  const keyRank = (label) => {
+    if (!dim.keyOrder) return 0; // alphabetical fallback via the tie-break below
+    const i = dim.keyOrder.indexOf(label);
+    return i === -1 ? dim.keyOrder.length : i;
+  };
+  const byKey = (a, b) =>
+    keyRank(a.label) - keyRank(b.label) || a.label.localeCompare(b.label);
+  const byCount = (a, b) => b.count - a.count || byKey(a, b);
+
+  const all = [...counts.entries()].map(([label, count]) => ({ label, count }));
+
+  let visible = all;
+  let folded = [];
+  if (all.length > MAX_SLICES) {
+    const ranked = [...all].sort(byCount);
+    visible = ranked.slice(0, MAX_SLICES - 1);
+    folded = ranked.slice(MAX_SLICES - 1);
+  }
+
+  // Hue by position in stable key order over the visible set.
+  const colorFor = new Map();
+  [...visible].sort(byKey).forEach((c, i) => {
+    colorFor.set(c.label, CATEGORICAL[i] || NEUTRAL);
+  });
+
+  const out = [...visible]
+    .sort(byCount)
+    .map((c) => makeCategory(dim, c.label, c.count, colorFor.get(c.label)));
+
+  if (folded.length > 0) {
+    out.push({
+      label: `Other (${folded.length})`,
+      count: folded.reduce((sum, f) => sum + f.count, 0),
+      color: NEUTRAL,
+      statusRole: null,
+      folded: [...folded].sort(byCount),
+    });
+  }
+  return out;
 }
 
 /**
@@ -260,5 +300,12 @@ function computeBreakdown(results) {
 
 /* Requireable from node:test while staying a plain browser script. */
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { pick, riskBand, titleCase, DIMENSIONS, computeBreakdown };
+  module.exports = {
+    pick,
+    riskBand,
+    titleCase,
+    DIMENSIONS,
+    computeBreakdown,
+    MAX_SLICES,
+  };
 }

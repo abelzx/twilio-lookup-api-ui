@@ -6,6 +6,7 @@ const {
   riskBand,
   DIMENSIONS,
   computeBreakdown,
+  MAX_SLICES,
 } = require("../assets/breakdown.js");
 
 test("pick returns the first present key", () => {
@@ -281,4 +282,111 @@ test("riskBand dimension ramps its four bands and carries status roles", () => {
   assert.equal(byLabel.Mild, null);
   assert.equal(byLabel.Moderate, "warning");
   assert.equal(byLabel.High, "critical");
+});
+
+/** Build results where each line type appears `n` times. */
+function typeResults(spec) {
+  const out = [];
+  for (const [type, n] of Object.entries(spec)) {
+    for (let i = 0; i < n; i++) {
+      out.push({ ok: true, data: { lineTypeIntelligence: { type } } });
+    }
+  }
+  return out;
+}
+
+function typeCats(spec) {
+  const out = computeBreakdown(typeResults(spec));
+  return out.dimensions.find((d) => d.id === "lineType").categories;
+}
+
+test("nominal slices are ordered by count, descending", () => {
+  const cats = typeCats({ landline: 10, mobile: 50, tollFree: 30 });
+  assert.deepEqual(cats.map((c) => c.label), ["mobile", "tollFree", "landline"]);
+});
+
+test("nominal hues follow stable key order, not count rank", () => {
+  // mobile is first in the canonical list, so it takes slot 1 in both runs
+  // even though its rank differs.
+  const busy = typeCats({ mobile: 50, landline: 10 });
+  const quiet = typeCats({ mobile: 5, landline: 90 });
+  const hue = (cats, label) => cats.find((c) => c.label === label).color;
+
+  assert.equal(hue(busy, "mobile"), "#2a78d6");
+  assert.equal(hue(quiet, "mobile"), "#2a78d6");
+  assert.equal(hue(busy, "landline"), "#eb6834");
+  assert.equal(hue(quiet, "landline"), "#eb6834");
+  // ...while slice order still follows count
+  assert.equal(quiet[0].label, "landline");
+});
+
+test("exactly six categories are all shown, each with its own hue", () => {
+  const cats = typeCats({
+    mobile: 6, landline: 5, fixedVoip: 4,
+    nonFixedVoip: 3, tollFree: 2, premium: 1,
+  });
+  assert.equal(cats.length, 6);
+  assert.ok(!cats.some((c) => c.label.startsWith("Other")));
+  assert.deepEqual(cats.map((c) => c.color), [
+    "#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300",
+  ]);
+});
+
+test("more than six categories fold the tail into Other", () => {
+  const cats = typeCats({
+    mobile: 100, landline: 50, fixedVoip: 25, nonFixedVoip: 12,
+    tollFree: 6, premium: 3, sharedCost: 2, pager: 1,
+  });
+  assert.equal(cats.length, MAX_SLICES);
+  const other = cats[cats.length - 1];
+  // 8 categories: top 5 kept, remaining 3 folded
+  assert.equal(other.label, "Other (3)");
+  assert.equal(other.count, 6); // premium 3 + sharedCost 2 + pager 1
+  assert.equal(other.color, "#8891AA");
+  assert.deepEqual(other.folded.map((f) => f.label), [
+    "premium", "sharedCost", "pager",
+  ]);
+});
+
+test("Other always sorts last even when it outweighs a kept category", () => {
+  // 7 categories, so the 2 smallest fold. By count the kept five are
+  // mobile 100, premium 20, sharedCost 20, then landline 2 and fixedVoip 2
+  // (ties broken by canonical key order). nonFixedVoip and tollFree fold.
+  const cats = typeCats({
+    mobile: 100, landline: 2, fixedVoip: 2, nonFixedVoip: 2, tollFree: 2,
+    premium: 20, sharedCost: 20,
+  });
+  const other = cats[cats.length - 1];
+  assert.equal(other.label, "Other (2)");
+  assert.equal(other.count, 4); // nonFixedVoip 2 + tollFree 2
+  // Other (4) is larger than the kept fixedVoip (2) yet still sorts last.
+  assert.ok(other.count > cats[cats.length - 2].count);
+});
+
+test("count ties are broken by stable key order, not insertion order", () => {
+  const a = typeCats({ landline: 5, mobile: 5 });
+  const b = typeCats({ mobile: 5, landline: 5 });
+  assert.deepEqual(a.map((c) => c.label), ["mobile", "landline"]);
+  assert.deepEqual(b.map((c) => c.label), ["mobile", "landline"]);
+});
+
+test("country falls back to alphabetical key order for hues", () => {
+  const out = computeBreakdown([
+    { ok: true, data: { countryCode: "US" } },
+    { ok: true, data: { countryCode: "US" } },
+    { ok: true, data: { countryCode: "AU" } },
+  ]);
+  const cats = out.dimensions.find((d) => d.id === "country").categories;
+  // slice order by count: US then AU
+  assert.deepEqual(cats.map((c) => c.label), ["US", "AU"]);
+  // hue order alphabetical: AU takes slot 1
+  assert.equal(cats.find((c) => c.label === "AU").color, "#2a78d6");
+  assert.equal(cats.find((c) => c.label === "US").color, "#eb6834");
+});
+
+test("percentages sum to about 100 and are not fudged", () => {
+  const cats = typeCats({ mobile: 1, landline: 1, tollFree: 1 });
+  const sum = cats.reduce((s, c) => s + c.pct, 0);
+  assert.ok(Math.abs(sum - 100) < 1e-9, `expected ~100, got ${sum}`);
+  assert.ok(Math.abs(cats[0].pct - 33.3333333) < 0.001);
 });
