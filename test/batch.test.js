@@ -34,7 +34,6 @@ function stubFetch(t, respond) {
 }
 
 const echo = (items) => [200, { results: items.map((input) => ({ input, ok: true })) }];
-const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Rejects the way fetch does when its signal is aborted. */
 function waitForAbort(signal) {
@@ -58,15 +57,24 @@ function baseOptions(overrides) {
 }
 
 test("runInBatches keeps input order when batches finish out of order", async (t) => {
+  // The first batch is held until the other two have reported. A timer would
+  // race the first Response/json() call, which can take 30ms+ on a cold runner.
+  let releaseFirst;
+  const firstHeld = new Promise((r) => {
+    releaseFirst = r;
+  });
   const calls = stubFetch(t, async (items) => {
-    if (items.includes("a")) await delay(30);
+    if (items.includes("a")) await firstHeld;
     return echo(items);
   });
   const progress = [];
   const out = await runInBatches(
     baseOptions({
       items: ["a", "b", "c", "d", "e"],
-      onProgress: (done, total) => progress.push([done, total]),
+      onProgress: (done, total) => {
+        progress.push([done, total]);
+        if (done === 3) releaseFirst();
+      },
     })
   );
   assert.deepEqual(
