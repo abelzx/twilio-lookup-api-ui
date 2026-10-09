@@ -27,6 +27,6 @@
     "node": ">=20"
   },
   "dependencies": {
-    "twilio": "^5.13.1"
+    "twilio": "^6.1.2"
   }
 }
