@@ -4,16 +4,20 @@ How the deployed app is put together. This describes what ships, not a plan.
 
 ## Shape
 
-A Twilio Serverless Service with two Functions and a static frontend served as Assets. There is no application server and no server-side state — the app holds no Twilio credentials of its own. Each user supplies their own at runtime.
+A Twilio Serverless Service with three Functions and a static frontend served as Assets. There is no application server and no server-side state — the app holds no Twilio or SendGrid credentials of its own. Each user supplies their own at runtime.
 
 ```
 .twilioserverlessrc     runtime: node24, functions/ + assets/ folders
 functions/
   verify.js             POST /verify  — validate OAuth credentials
   lookup.js             POST /lookup  — run Lookup v2 queries
+  email.js              POST /email   — run SendGrid email validations
 assets/
-  index.html            login view + lookup view in one page
-  app.js                all client logic
+  index.html            login view + Lookup and Email tabs in one page
+  batch.js              batch runner and CSV helpers shared by both tabs
+  breakdown.js          Lookup results breakdown charts
+  app.js                auth, tabs, Lookup tab
+  email.js              Email tab
   styles.css
 ```
 
@@ -62,6 +66,27 @@ Per-number failures are captured rather than thrown, so one bad number never fai
 
 The Twilio SDK's built-in 429 backoff is enabled with `maxRetries: 3` — deliberately low, since retries also have to fit inside the 10-second budget.
 
+### `POST /email`
+
+Accepts JSON `{ apiKey, emails, source?, concurrency? }`. `apiKey` is the caller's SendGrid key with the Email Address Validation scope. No Twilio token is fetched: the OAuth gate is enforced by the UI, and the SendGrid key is the credential that matters here.
+
+`emails` is split, trimmed and de-duplicated exactly like `numbers` on `/lookup`. An empty list, a missing key, or a `source` with anything other than letters, digits and spaces is a 400.
+
+Each address is one `POST https://api.sendgrid.com/v3/validations/email` with `Authorization: Bearer <apiKey>`, run through the same `mapWithConcurrency` (1–7, default 5). Results have the `/lookup` shape, and `data` is SendGrid's `result` object unmodified:
+
+```json
+{ "input": "a@example.com", "ok": true,  "data": { "verdict": "Valid", "score": 0.97, "checks": { "…": "…" } } }
+{ "input": "bad@",          "ok": false, "error": "…", "code": 400 }
+```
+
+Three limits keep a batch inside the 10-second Function timeout:
+
+- Each request has a 4-second `AbortSignal.timeout`.
+- A 429 is retried at most twice, after 250 ms and then 750 ms.
+- The invocation has an 8.5-second budget. A request that would start, or a retry that would wait, past it is reported as `SendGrid did not respond in time.` Per-request timeouts alone do not bound a batch: 30 addresses at concurrency 7 is 5 rounds.
+
+If any address comes back 401 or 403, the whole response is HTTP 401 with one "SendGrid rejected the API key…" message, with SendGrid's own message appended when present. The UI stops the run on it, as it does for a bad OAuth secret on `/lookup`.
+
 ## Frontend
 
 `index.html` holds both views; `initAuth()` picks one on load.
@@ -70,7 +95,9 @@ The Twilio SDK's built-in 429 backoff is enabled with `maxRetries: 3` — delibe
 
 Every `/lookup` request carries credentials in its JSON body via `getCredsForRequest()`. Nothing is written to disk, and Twilio Serverless does not log request bodies.
 
-**Batching.** The number list is chunked by batch size (default 30, max 2000) and sent as several `/lookup` requests, up to `parallelBatches` (default 2) in flight. A progress bar tracks completion, the run is cancellable via `AbortController`, and partial results stay exportable. Full results live in memory for CSV export; the on-screen table and JSON preview are truncated (`TABLE_PREVIEW_LIMIT`, `RAW_JSON_PREVIEW_ROWS`) to keep rendering cheap on large runs.
+**Tabs.** A `role="tablist"` under the header switches between the Lookup and Email panels; Left/Right arrows move between tabs. The active tab is kept in `sessionStorage` (`twilio_lookup_tab`) so a reload returns to it. Each tab has its own header text. The Email tab's SendGrid key is stored separately under `twilio_lookup_sendgrid`; sign-out clears it along with the OAuth key.
+
+**Batching.** Both tabs run through `runInBatches` in `batch.js`. The list is chunked by batch size (Lookup: default 30, max 2000; Email: default 30, max 50) and sent as several requests, up to `parallelBatches` (default 2) in flight. A progress bar tracks completion, the run is cancellable via `AbortController`, and partial results stay exportable. Full results live in memory for CSV export; the on-screen table and JSON preview are truncated (`TABLE_PREVIEW_LIMIT`, `RAW_JSON_PREVIEW_ROWS`) to keep rendering cheap on large runs.
 
 ## Security properties
 
@@ -82,7 +109,7 @@ Every `/lookup` request carries credentials in its JSON body via `getCredsForReq
 Two properties worth stating plainly, because they are consequences of the design rather than oversights:
 
 - **`sessionStorage` is readable by JavaScript on the page.** Any XSS on the deployed origin can exfiltrate whatever is stored there. OAuth does not remove that exposure — the Client Secret sits where the Auth Token used to. What it changes is blast radius: the app can be scoped to Lookup alone, and its secret rotated with a grace period, independently of the account's master credential. Access tokens are never stored at all.
-- **The Function URLs are public.** Anyone with the URL can use the tool, but only with OAuth credentials they already hold. The deployment holds no credentials of its own, so it cannot be used to spend the owner's balance.
+- **The Function URLs are public.** Anyone with the URL can use the tool, but only with OAuth credentials or a SendGrid key they already hold. The deployment holds no credentials of its own, so it cannot be used to spend the owner's balance or validation credits.
 
 ## Constraints and trade-offs
 

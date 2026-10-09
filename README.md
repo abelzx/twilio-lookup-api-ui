@@ -10,8 +10,13 @@ Users sign in with their own [Twilio OAuth app](https://www.twilio.com/docs/iam/
 
 **Supported data packages:** `caller_name`, `sim_swap`, `call_forwarding`, `line_status`, `line_type_intelligence`, `identity_match`, `reassigned_number`, `sms_pumping_risk`, `validation`
 
+**Email validation:** a second tab validates email addresses in bulk with SendGrid's [Email Address Validation API](https://www.twilio.com/docs/sendgrid/api-reference/email-address-validation/validate-an-email). It needs a SendGrid key of its own ([setup below](#sendgrid-email-validation)).
+
 > [!WARNING]
 > **Every data package is billed per phone number looked up.** This is a *bulk* tool — 5,000 numbers with 3 packages selected is 15,000 billable Lookup requests. Check [Lookup pricing](https://www.twilio.com/en-us/lookup/pricing) and test with a short list first.
+
+> [!WARNING]
+> **Each email address is one billable SendGrid validation.** Duplicates are removed first, but a 10,000-row list is still up to 10,000 validations.
 
 > Not an official Twilio product. Unaffiliated with, and unsupported by, Twilio Inc.
 
@@ -106,6 +111,19 @@ Nothing is persisted server-side: no `.env`, no database, and Twilio Serverless 
 
 ---
 
+## SendGrid Email Validation
+
+The **Email** tab calls SendGrid's Email Address Validation API with a SendGrid API key that you enter in the tab itself. You still sign in with the Twilio OAuth app first.
+
+1. Email Address Validation is available on **Email API Pro and Premier** plans only. On other plans the option to create the key does not appear.
+2. In the SendGrid console, go to **Settings › API Keys › Create API Key**.
+3. Choose **Restricted Access** and grant **Email Address Validation**. Grant nothing else.
+4. Copy the key (it starts with `SG.`) and paste it into the Email tab.
+
+The key is kept in `sessionStorage` under `twilio_lookup_sendgrid`, the same exposure as the OAuth credentials. **Forget key** removes it, and so does **Sign out**. It is sent in the body of each `POST /email` request and never stored server-side.
+
+---
+
 ## Usage
 
 1. **Enter numbers** — paste E.164 numbers (e.g. `+14155552671`) into the text box, one per line or comma-separated, or upload a CSV and specify which column holds the phone numbers.
@@ -139,11 +157,14 @@ Expand **Identity Match fields** to supply name and address data for the `identi
 twilio-lookup-api-ui/
 ├── .twilioserverlessrc  # Twilio Serverless config (functions/ + assets/ folders)
 ├── functions/
+│   ├── email.js         # POST /email — validates addresses with SendGrid
 │   ├── lookup.js        # POST /lookup — runs Lookup v2 queries
 │   └── verify.js        # POST /verify — validates OAuth credentials
 └── assets/              # Static frontend, served as Twilio Assets
     ├── index.html
-    ├── app.js
+    ├── batch.js         # batch runner + CSV helpers shared by both tabs
+    ├── app.js           # auth, tabs, Lookup tab
+    ├── email.js         # Email tab
     └── styles.css
 ```
 
