@@ -176,85 +176,6 @@ function el(id) {
   return document.getElementById(id);
 }
 
-function yieldToUi() {
-  return new Promise((r) => setTimeout(r, 0));
-}
-
-/** RFC-style CSV parse (quotes, commas, newlines inside quoted fields). */
-function parseCsv(text) {
-  const rows = [];
-  let row = [];
-  let cur = "";
-  let inQuotes = false;
-  const len = text.length;
-  for (let i = 0; i < len; i++) {
-    const c = text[i];
-    const next = text[i + 1];
-    if (inQuotes) {
-      if (c === '"' && next === '"') {
-        cur += '"';
-        i++;
-      } else if (c === '"') {
-        inQuotes = false;
-      } else {
-        cur += c;
-      }
-    } else if (c === '"') {
-      inQuotes = true;
-    } else if (c === ",") {
-      row.push(cur);
-      cur = "";
-    } else if (c === "\n") {
-      row.push(cur);
-      if (row.some((cell) => String(cell).length > 0)) rows.push(row);
-      row = [];
-      cur = "";
-    } else if (c === "\r") {
-      if (next === "\n") i++;
-      row.push(cur);
-      if (row.some((cell) => String(cell).length > 0)) rows.push(row);
-      row = [];
-      cur = "";
-    } else {
-      cur += c;
-    }
-  }
-  row.push(cur);
-  if (row.some((cell) => String(cell).length > 0)) rows.push(row);
-  return rows;
-}
-
-function stripBom(s) {
-  return s.charCodeAt(0) === 0xfeff ? s.slice(1) : s;
-}
-
-/**
- * @param {string[][]} rows
- * @param {number} columnOneBased 1 = first column
- */
-function extractPhonesFromCsvRows(rows, columnOneBased) {
-  const col = Math.max(1, Math.floor(columnOneBased)) - 1;
-  const raw = [];
-  for (const r of rows) {
-    if (!r || col >= r.length) continue;
-    const v = String(r[col] ?? "").trim();
-    if (v) raw.push(v);
-  }
-  return [...new Set(raw)];
-}
-
-function uniquePhonesFromTextarea() {
-  const raw = el("numbers").value;
-  const lines = raw.split(/[\r\n,]+/);
-  return [
-    ...new Set(
-      lines
-        .map((n) => String(n).trim())
-        .filter((n) => n.length > 0)
-    ),
-  ];
-}
-
 function getBatchSize() {
   const n = Number(el("batchSize").value) || 30;
   return Math.min(2000, Math.max(25, Math.floor(n)));
@@ -273,39 +194,6 @@ function getSkipCount() {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return 0;
   return Math.min(Math.floor(n), 10_000_000);
-}
-
-/** @param {AbortSignal[]} signals */
-function anyAbortSignal(signals) {
-  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.any === "function") {
-    return AbortSignal.any(signals);
-  }
-  return signals[0];
-}
-
-/** Log-friendly copy of lookup body (truncate huge `numbers` arrays). */
-function summarizeLookupBodyForLog(body) {
-  const nums = body.numbers;
-  const n = Array.isArray(nums) ? nums.length : 0;
-  if (n <= 20) return body;
-  return {
-    ...body,
-    numbers: [...nums.slice(0, 5), `… +${n - 5} more`],
-    numbersCount: n,
-  };
-}
-
-function logLookupResponse(res, json) {
-  const results = json.results || [];
-  const base = {
-    httpStatus: res.status,
-    ok: res.ok,
-    error: json.error,
-    resultsCount: results.length,
-    succeeded: results.filter((r) => r.ok).length,
-    failed: results.filter((r) => !r.ok).length,
-    fetchParams: json.fetchParams,
-  };
 }
 
 function buildLookupJsonBody(numbersSlice) {
@@ -370,114 +258,6 @@ function setProgressVisible(visible, total = 0, done = 0) {
   updateThroughputDisplay(done);
 }
 
-/** Merge chunk results in file order; stop at first missing chunk (cancel / in-flight). */
-function mergeChunkResultsPrefix(chunkResults, nChunks) {
-  const all = [];
-  for (let i = 0; i < nChunks; i++) {
-    const r = chunkResults[i];
-    if (!r) break;
-    all.push(...r);
-  }
-  return all;
-}
-
-/**
- * Runs several HTTP batches in parallel (each batch does concurrent Twilio calls server-side).
- * @returns {Promise<{ results: any[]; cancelled: boolean }>}
- */
-async function runLookupInChunks(numbers, signal) {
-  const batchSize = getBatchSize();
-  const total = numbers.length;
-  const slices = [];
-  for (let o = 0; o < numbers.length; o += batchSize) {
-    slices.push(numbers.slice(o, o + batchSize));
-  }
-  const nChunks = slices.length;
-  if (nChunks === 0) {
-    return { results: [], cancelled: false };
-  }
-
-  const errorCtrl = new AbortController();
-  const fetchSignal = anyAbortSignal([signal, errorCtrl.signal]);
-
-  /** @type {any[][]} */
-  const chunkResults = [];
-  let doneCount = 0;
-  let nextIndex = 0;
-  /** @type {Error | null} */
-  let hardError = null;
-
-  async function worker() {
-    for (;;) {
-      if (signal.aborted) return;
-      if (hardError) return;
-      const i = nextIndex++;
-      if (i >= nChunks) return;
-
-      const slice = slices[i];
-      try {
-        const body = buildLookupJsonBody(slice);
-        const res = await fetch(LOOKUP_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: fetchSignal,
-          body: JSON.stringify(body),
-        });
-        const json = await res.json();
-        logLookupResponse(res, json);
-        if (!res.ok) {
-          hardError = new Error(json.error || res.statusText);
-          errorCtrl.abort();
-          return;
-        }
-        chunkResults[i] = json.results || [];
-        doneCount += slice.length;
-        setProgressVisible(true, total, doneCount);
-        setStatus(
-          `Running… ${doneCount.toLocaleString()} / ${total.toLocaleString()} processed`
-        );
-        await yieldToUi();
-      } catch (e) {
-        if (e.name === "AbortError") {
-          return;
-        }
-        hardError = e instanceof Error ? e : new Error(String(e));
-        errorCtrl.abort();
-        return;
-      }
-    }
-  }
-
-  const poolSize = Math.min(getParallelBatches(), nChunks);
-  await Promise.all(Array.from({ length: poolSize }, () => worker()));
-
-  const merged = mergeChunkResultsPrefix(chunkResults, nChunks);
-
-  if (hardError) {
-    throw hardError;
-  }
-  if (signal.aborted) {
-    return { results: merged, cancelled: true };
-  }
-  return { results: merged, cancelled: false };
-}
-
-async function runLookupSingle(numbers, signal) {
-  const body = buildLookupJsonBody(numbers);
-  const res = await fetch(LOOKUP_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    signal,
-    body: JSON.stringify(body),
-  });
-  const json = await res.json();
-  logLookupResponse(res, json);
-  if (!res.ok) {
-    throw new Error(json.error || res.statusText);
-  }
-  return json.results || [];
-}
-
 /**
  * sms_pumping_risk is deliberately off by default: Twilio's own bands put almost
  * all real traffic in "Low" (0-60), so it bills per lookup while telling you
@@ -529,90 +309,6 @@ function setStatus(message, isError = false) {
   const s = el("status");
   s.textContent = message;
   s.className = isError ? "status error" : "status";
-}
-
-/** Flatten nested objects for CSV (dot keys). */
-function flattenRecord(obj, prefix = "") {
-  /** @type {Record<string, string>} */
-  const out = {};
-  if (obj === null || obj === undefined) {
-    if (prefix) out[prefix] = "";
-    return out;
-  }
-  if (typeof obj !== "object") {
-    out[prefix || "value"] = formatCell(obj);
-    return out;
-  }
-  if (Array.isArray(obj)) {
-    out[prefix || "items"] = obj.map(formatCell).join("; ");
-    return out;
-  }
-  for (const k of Object.keys(obj)) {
-    const key = prefix ? `${prefix}.${k}` : k;
-    const v = obj[k];
-    if (v !== null && typeof v === "object" && !Array.isArray(v)) {
-      Object.assign(out, flattenRecord(v, key));
-    } else if (Array.isArray(v)) {
-      out[key] = v.map(formatCell).join("; ");
-    } else {
-      out[key] = formatCell(v);
-    }
-  }
-  return out;
-}
-
-function formatCell(v) {
-  if (v === null || v === undefined) return "";
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
-
-function resultsToRows(results) {
-  /** @type {Record<string, string>[]} */
-  const rows = [];
-  for (const r of results) {
-    const base = {
-      input: r.input,
-      ok: r.ok ? "true" : "false",
-      error: r.ok ? "" : r.error || "",
-      error_code: r.ok ? "" : String(r.code ?? ""),
-    };
-    if (r.ok && r.data) {
-      const flat = flattenRecord(r.data);
-      rows.push({ ...base, ...flat });
-    } else {
-      rows.push(base);
-    }
-  }
-  return rows;
-}
-
-function toCsv(rows) {
-  if (!rows.length) return "";
-  const allKeys = new Set();
-  rows.forEach((row) => Object.keys(row).forEach((k) => allKeys.add(k)));
-  const headers = Array.from(allKeys);
-  const escape = (val) => {
-    const s = val == null ? "" : String(val);
-    if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-    return s;
-  };
-  const lines = [
-    headers.map(escape).join(","),
-    ...rows.map((row) => headers.map((h) => escape(row[h] ?? "")).join(",")),
-  ];
-  return lines.join("\r\n");
-}
-
-function downloadCsv(text, filename) {
-  const bom = "\uFEFF";
-  const blob = new Blob([bom + text], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 function renderTable(results) {
@@ -709,7 +405,7 @@ function resolveNumbersForRun() {
     }
     return parsedCsvNumbers;
   }
-  const fromText = uniquePhonesFromTextarea();
+  const fromText = uniqueLines(el("numbers").value);
   if (!fromText.length) {
     throw new Error("Provide at least one phone number or upload a CSV.");
   }
@@ -739,7 +435,6 @@ async function runLookup() {
   }
 
   const batchSize = getBatchSize();
-  const useChunks = numbers.length > batchSize;
 
   setStatus(
     skip > 0
@@ -763,17 +458,21 @@ async function runLookup() {
   let deferProgressHide = false;
 
   try {
-    let results;
-    let batchCancelled = false;
-    if (useChunks) {
-      const out = await runLookupInChunks(numbers, signal);
-      results = out.results;
-      batchCancelled = out.cancelled;
-    } else {
-      results = await runLookupSingle(numbers, signal);
-      deferProgressHide = true;
-      setProgressVisible(true, numbers.length, results.length);
-    }
+    const { results, cancelled: batchCancelled } = await runInBatches({
+      items: numbers,
+      endpoint: LOOKUP_ENDPOINT,
+      buildBody: buildLookupJsonBody,
+      batchSize,
+      parallelBatches: getParallelBatches(),
+      signal,
+      onProgress: (done, total) => {
+        setProgressVisible(true, total, done);
+        setStatus(
+          `Running… ${done.toLocaleString()} / ${total.toLocaleString()} processed`
+        );
+      },
+    });
+    deferProgressHide = numbers.length <= batchSize;
     lastResponse = results;
     renderTable(results);
     // The breakdown is a summary of the table, so it must never be able to take
@@ -861,7 +560,7 @@ function refreshCsvFromInputs() {
       const text = stripBom(String(reader.result || ""));
       const rows = parseCsv(text);
       const col = Number(el("csvPhoneColumn").value) || 1;
-      parsedCsvNumbers = extractPhonesFromCsvRows(rows, col);
+      parsedCsvNumbers = extractColumnFromCsvRows(rows, col);
       if (!parsedCsvNumbers.length) {
         meta.textContent = `“${file.name}”: no values in column ${col}. Check “Phone column”.`;
         return;
