@@ -917,3 +917,83 @@ code {
   color: rgba(255, 255, 255, 0.75);
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------------------------------------------------------------------------
+   Tabs — Lookup / Email
+   --------------------------------------------------------------------------- */
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin: -0.5rem 0 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  font-family: var(--font);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.6rem 1rem;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab[aria-selected="true"] {
+  color: var(--twilio-red);
+  border-bottom-color: var(--twilio-red);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Email tab
+   --------------------------------------------------------------------------- */
+.key-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.65rem;
+}
+
+.key-row__field {
+  flex: 1;
+}
+
+.panel-section {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.billing-note {
+  margin: 1rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--warning);
+}
+
+/* The verdict word is always shown, so colour is never the only signal. */
+.verdict--valid {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.verdict--risky {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.verdict--invalid {
+  color: var(--danger);
+  font-weight: 600;
+}

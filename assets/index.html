@@ -61,7 +61,7 @@
 
       <div class="app">
         <header class="header">
-          <div class="header__title">
+          <div class="header__title" data-tab-header="lookup">
             <h1>Lookup v2</h1>
             <p class="header__subtitle">
               Bulk phone validation and optional data packages. Charges apply when
@@ -74,9 +74,27 @@
               >.
             </p>
           </div>
+          <div class="header__title" data-tab-header="email" hidden>
+            <h1>Email validation</h1>
+            <p class="header__subtitle">
+              Bulk email address validation with SendGrid. Each address is one
+              billable validation — see
+              <a
+                href="https://www.twilio.com/docs/sendgrid/api-reference/email-address-validation/validate-an-email"
+                target="_blank"
+                rel="noreferrer"
+                >Email Address Validation API docs</a
+              >.
+            </p>
+          </div>
         </header>
 
-        <main class="layout">
+        <div class="tabs" role="tablist" aria-label="Tool">
+          <button type="button" class="tab" role="tab" id="tabLookup" data-tab="lookup" aria-controls="panelLookup" aria-selected="true">Lookup</button>
+          <button type="button" class="tab" role="tab" id="tabEmail" data-tab="email" aria-controls="panelEmail" aria-selected="false" tabindex="-1">Email</button>
+        </div>
+
+        <main class="layout" id="panelLookup" role="tabpanel" aria-labelledby="tabLookup">
           <section class="panel panel--input">
             <h2>Phone numbers</h2>
             <p class="hint">One number per line, or comma-separated. Duplicates are removed.</p>
@@ -208,6 +226,122 @@
             <details class="details raw-details">
               <summary>Raw JSON</summary>
               <pre id="rawJson" class="raw-json"></pre>
+            </details>
+          </section>
+        </main>
+
+        <main class="layout" id="panelEmail" role="tabpanel" aria-labelledby="tabEmail" hidden>
+          <section class="panel panel--input">
+            <h2>SendGrid API key</h2>
+            <p class="hint">Needs an API key with the Email Address Validation scope (Email API Pro or Premier).</p>
+            <div class="key-row">
+              <label class="field key-row__field">
+                <span>API key</span>
+                <input type="password" id="emailApiKey" placeholder="SG.…" spellcheck="false" autocomplete="off" />
+              </label>
+              <button type="button" class="btn" id="emailForgetKey">Forget key</button>
+            </div>
+
+            <div class="panel-section">
+              <h2>Email addresses</h2>
+              <p class="hint">One address per line, or comma-separated. Duplicates are removed.</p>
+              <textarea
+                id="emailList"
+                rows="12"
+                placeholder="ada@example.com&#10;grace@example.org&#10;…"
+                spellcheck="false"
+              ></textarea>
+            </div>
+
+            <div class="csv-block">
+              <h2 class="csv-block__title">CSV upload (large batches)</h2>
+              <p class="hint">
+                Upload a CSV; addresses are read from the column you choose (quoted fields supported).
+              </p>
+              <div class="row row--gap csv-row">
+                <label class="field-inline field-inline--grow">
+                  <span>CSV file</span>
+                  <input type="file" id="emailCsvFile" accept=".csv,text/csv,text/plain" />
+                </label>
+                <label class="field-inline">
+                  <span>Email column (1 = first)</span>
+                  <input type="number" id="emailCsvColumn" min="1" value="1" />
+                </label>
+                <label class="field-inline">
+                  <span>Addresses per API batch</span>
+                  <input type="number" id="emailBatchSize" min="1" max="50" value="30" title="Capped at 50 so a batch fits inside the 10s Function timeout" />
+                </label>
+                <label class="field-inline">
+                  <span>Parallel batches</span>
+                  <input type="number" id="emailParallelBatches" min="1" max="12" value="2" title="How many /email requests run at once" />
+                </label>
+                <label class="field-inline">
+                  <span>Skip first N records</span>
+                  <input
+                    type="number"
+                    id="emailSkipRecords"
+                    min="0"
+                    value="0"
+                    title="After dedupe, in list order — resume a job by skipping rows you already processed"
+                  />
+                </label>
+              </div>
+              <p class="csv-meta" id="emailCsvMeta" aria-live="polite"></p>
+            </div>
+
+            <div class="row row--gap">
+              <label class="field-inline">
+                <span>Source (optional)</span>
+                <input type="text" id="emailSource" placeholder="signup" maxlength="64" title="Letters, digits and spaces only. Shown in SendGrid's validation dashboard." />
+              </label>
+              <label class="field-inline">
+                <span>Concurrent validations (per batch)</span>
+                <input type="number" id="emailConcurrency" min="1" max="7" value="5" title="Parallel SendGrid calls inside each batch (capped at 7 by /email to stay under the 10s Function timeout)" />
+              </label>
+            </div>
+
+            <p class="billing-note">Each address is one billable validation.</p>
+
+            <div class="actions">
+              <button type="button" class="btn btn--primary" id="emailRun">
+                Run validation
+              </button>
+              <button type="button" class="btn" id="emailCancel" disabled hidden>
+                Cancel
+              </button>
+              <button type="button" class="btn" id="emailExport" disabled>
+                Export CSV
+              </button>
+            </div>
+            <div class="progress-wrap" id="emailProgressWrap" hidden>
+              <progress id="emailProgress" max="100" value="0"></progress>
+              <span class="progress-label" id="emailProgressLabel">0 / 0</span>
+            </div>
+            <p class="throughput" id="emailThroughput" aria-live="polite" hidden>—</p>
+            <p class="status" id="emailStatus" aria-live="polite"></p>
+          </section>
+
+          <section class="panel panel--results">
+            <div class="results-header">
+              <h2>Results</h2>
+              <span class="badge" id="emailResultCount">0 rows</span>
+            </div>
+            <div class="table-wrap">
+              <table class="results-table">
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Verdict</th>
+                    <th>Summary</th>
+                  </tr>
+                </thead>
+                <tbody id="emailResultsBody"></tbody>
+              </table>
+            </div>
+            <p class="preview-note" id="emailPreviewNote" hidden></p>
+            <details class="details raw-details">
+              <summary>Raw JSON</summary>
+              <pre id="emailRawJson" class="raw-json"></pre>
             </details>
           </section>
         </main>

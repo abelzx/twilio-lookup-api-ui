@@ -49,6 +49,9 @@ const RAW_JSON_PREVIEW_ROWS = 35;
 const LOOKUP_ENDPOINT = "/lookup";
 const VERIFY_ENDPOINT = "/verify";
 const CRED_STORAGE_KEY = "twilio_lookup_oauth";
+/** The Email tab's SendGrid key. Sign-out clears it along with the OAuth credentials. */
+const SENDGRID_STORAGE_KEY = "twilio_lookup_sendgrid";
+const TAB_STORAGE_KEY = "twilio_lookup_tab";
 
 function loadCreds() {
   try {
@@ -152,8 +155,10 @@ function showApp(label) {
 
 function signOut() {
   clearCreds();
+  sessionStorage.removeItem(SENDGRID_STORAGE_KEY);
   el("loginClientId").value = "";
   el("loginClientSecret").value = "";
+  el("emailApiKey").value = "";
   showLogin();
 }
 
@@ -578,7 +583,39 @@ function refreshCsvFromInputs() {
   reader.readAsText(file, "UTF-8");
 }
 
+/** Shows one tab's panel and header; remembers it so a reload returns to it. */
+function selectTab(name, focus = false) {
+  const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+  if (!tabs.some((t) => t.dataset.tab === name)) name = tabs[0].dataset.tab;
+  for (const tab of tabs) {
+    const on = tab.dataset.tab === name;
+    tab.setAttribute("aria-selected", String(on));
+    tab.tabIndex = on ? 0 : -1;
+    el(tab.getAttribute("aria-controls")).hidden = !on;
+    if (on && focus) tab.focus();
+  }
+  document.querySelectorAll("[data-tab-header]").forEach((h) => {
+    h.hidden = h.dataset.tabHeader !== name;
+  });
+  sessionStorage.setItem(TAB_STORAGE_KEY, name);
+}
+
+function initTabs() {
+  const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+  tabs.forEach((tab, i) => {
+    tab.addEventListener("click", () => selectTab(tab.dataset.tab));
+    tab.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      const step = e.key === "ArrowRight" ? 1 : -1;
+      selectTab(tabs[(i + step + tabs.length) % tabs.length].dataset.tab, true);
+    });
+  });
+  selectTab(sessionStorage.getItem(TAB_STORAGE_KEY));
+}
+
 initAuth();
+initTabs();
 initFieldCheckboxes();
 initIdentityFields();
 
